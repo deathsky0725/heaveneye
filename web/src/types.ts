@@ -39,7 +39,8 @@ export type ServerEvent =
   | { type: 'patch'; agent: AgentSnapshot }
   | { type: 'inbox_append'; entry: InboxEntry }
   | { type: 'inbox_reset' }
-  | { type: 'kanban_event'; event: KanbanEventEntry };
+  | { type: 'kanban_event'; event: KanbanEventEntry }
+  | { type: 'system_health'; health: SystemHealth };
 
 export interface Usage5hEntry {
   agent: AgentId;
@@ -72,3 +73,16 @@ export interface InboxEntry {
 }
 
 export type InboxEvent = { type: 'inbox_append'; entry: InboxEntry } | { type: 'inbox_reset' };
+
+export interface GatewayHealth {
+  profile: AgentId;
+  pid: number | null;
+  startedAt: string | null;
+  alive: boolean;
+  lastCheckedAt: string;
+}
+
+export interface SystemHealth {
+  checkedAt: string;
+  gateways: GatewayHealth[];
+}

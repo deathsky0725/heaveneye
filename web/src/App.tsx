@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { connectStream, startUsage5hPolling, fetchInitialInbox, fetchInitialEvents, useStore } from './store';
+import { connectStream, startUsage5hPolling, fetchInitialInbox, fetchInitialEvents, fetchInitialHealth, useStore } from './store';
 import { AgentCard } from './components/AgentCard';
 import { ConnectionLines } from './components/ConnectionLines';
 import { UsagePanel } from './components/UsagePanel';
 import { InboxPanel } from './components/InboxPanel';
 import { TaskFeedSidebar } from './components/TaskFeedSidebar';
+import { SystemHealth } from './components/SystemHealth';
 import type { AgentId, AgentSnapshot } from './types';
 
 export default function App() {
@@ -12,7 +13,7 @@ export default function App() {
   const connected = useStore((s) => s.connected);
   const orgRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { connectStream(); startUsage5hPolling(); fetchInitialInbox(); fetchInitialEvents(); }, []);
+  useEffect(() => { connectStream(); startUsage5hPolling(); fetchInitialInbox(); fetchInitialEvents(); fetchInitialHealth(); }, []);
 
   const byId = (id: AgentId): AgentSnapshot | undefined => agents.find((a) => a.id === id);
 
@@ -36,6 +37,8 @@ export default function App() {
             <UsagePanel />
           </div>
         </header>
+
+        <SystemHealth />
 
         {agents.length === 0 ? (
           <div className="text-center text-slate-500 py-20">รอเชื่อมต่อ server...</div>

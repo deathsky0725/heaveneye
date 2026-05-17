@@ -1,6 +1,7 @@
 import type { AgentSnapshot, AgentStatus } from '../types';
 import { RiveAvatar } from './RiveAvatar';
 import { TokenBadge } from './TokenBadge';
+import { idleDuration, IDLE_COLOR } from '../lib/idle';
 
 const STATUS_LABEL: Record<AgentStatus, string> = {
   idle:     'ว่าง',
@@ -45,6 +46,14 @@ export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; co
             <span className={`w-2 h-2 rounded-full ${STATUS_DOT[agent.status]}`} />
             <span className="text-sm text-slate-200">{STATUS_LABEL[agent.status]}</span>
           </div>
+          {agent.status === 'idle' && (() => {
+            const idle = idleDuration(agent.lastEventAt, !!agent.currentTask);
+            return idle.tier !== 'hidden' ? (
+              <div className={`text-[11px] ${IDLE_COLOR[idle.tier]} mt-0.5`}>
+                {idle.text}
+              </div>
+            ) : null;
+          })()}
 
           {agent.currentTask && (
             <div className="mt-1 text-xs text-slate-300 truncate">
