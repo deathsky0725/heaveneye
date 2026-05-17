@@ -27,7 +27,8 @@ interface InboxEntryRowProps {
 }
 
 function InboxEntryRow({ entry, isFlashing, onFlashDone }: InboxEntryRowProps) {
-  const cfg = PRIORITY_CONFIG[entry.priority];
+  const priority = entry.priority ?? 'medium';
+  const cfg = PRIORITY_CONFIG[priority];
   const rowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -79,18 +80,6 @@ export function InboxPanel() {
 
   return (
     <>
-      {/* CSS for flash animation */}
-      <style>{`
-        @keyframes flash-inbox-keyframe {
-          0%   { background-color: rgba(245, 158, 11, 0.35); border-color: rgba(245, 158, 11, 0.7); }
-          50%  { background-color: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); }
-          100% { background-color: rgba(30, 41, 59, 0.6); border-color: rgba(51, 65, 85, 0.5); }
-        }
-        .flash-inbox {
-          animation: flash-inbox-keyframe 0.9s ease-out forwards;
-        }
-      `}</style>
-
       {/* Fixed panel — bottom right */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
         {/* Expanded list */}
@@ -113,14 +102,17 @@ export function InboxPanel() {
             ) : (
               /* Entries — newest last so newest appear at bottom */
               <div className="flex flex-col gap-2">
-                {[...inbox].map((entry) => (
-                  <InboxEntryRow
-                    key={entry.id}
-                    entry={entry}
-                    isFlashing={inboxFlash === entry.id}
-                    onFlashDone={markInboxFlashShown}
-                  />
-                ))}
+                {[...inbox].map((entry) => {
+                  if (!entry?.id) return null;
+                  return (
+                    <InboxEntryRow
+                      key={entry.id}
+                      entry={entry}
+                      isFlashing={inboxFlash === entry.id}
+                      onFlashDone={markInboxFlashShown}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>

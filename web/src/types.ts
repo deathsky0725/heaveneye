@@ -49,7 +49,7 @@ export interface InboxEntry {
   from: string;
   message: string;
   action_required: boolean;
-  priority: Priority;
+  priority?: Priority; // optional — defaults handled in UI
 }
 
-export type InboxEvent = { type: 'inbox_append'; entry: InboxEntry };
+export type InboxEvent = { type: 'inbox_append'; entry: InboxEntry } | { type: 'inbox_reset' };

@@ -15,13 +15,13 @@ body {
 @keyframes breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
 @keyframes wiggle  { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 @keyframes bounce-soft { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-
-@keyframes pulse-amber {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.7; transform: scale(0.96); }
+@keyframes flash-inbox-keyframe {
+  0%   { background-color: rgba(245, 158, 11, 0.35); border-color: rgba(245, 158, 11, 0.7); }
+  50%  { background-color: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); }
+  100% { background-color: rgba(30, 41, 59, 0.6); border-color: rgba(51, 65, 85, 0.5); }
 }
 
-.anim-breathe     { animation: breathe 3s ease-in-out infinite; }
-.anim-wiggle      { animation: wiggle 0.5s ease-in-out infinite; }
-.anim-bounce      { animation: bounce-soft 1.2s ease-in-out infinite; }
-.anim-pulse-amber { animation: pulse-amber 1.5s ease-in-out infinite; }
+.anim-breathe { animation: breathe 3s ease-in-out infinite; }
+.anim-wiggle  { animation: wiggle 0.5s ease-in-out infinite; }
+.anim-bounce  { animation: bounce-soft 1.2s ease-in-out infinite; }
+.flash-inbox  { animation: flash-inbox-keyframe 0.9s ease-out forwards; }

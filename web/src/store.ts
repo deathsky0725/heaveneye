@@ -91,3 +91,11 @@ export function startUsage5hPolling() {
   poll();
   setInterval(poll, POLL_INTERVAL_MS);
 }
+
+export function fetchInitialInbox() {
+  const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
+  fetch(`${base}/api/inbox`)
+    .then((res) => res.ok ? res.json() : Promise.reject())
+    .then((entries: InboxEntry[]) => useStore.getState().set({ inbox: entries }))
+    .catch(() => { /* inbox stays empty — SSE will append new entries */ });
+}
