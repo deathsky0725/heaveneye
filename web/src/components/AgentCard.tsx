@@ -3,7 +3,8 @@ import type { AgentSnapshot, AgentStatus } from '../types';
 import { RiveAvatar } from './RiveAvatar';
 import { TokenBadge } from './TokenBadge';
 import { StatChart } from './StatChart';
-import { idleDuration, IDLE_COLOR } from '../lib/idle';
+import { idleDuration, IDLE_COLOR, alertDuration, ALERT_COLOR } from '../lib/idle';
+import { useStore } from '../store';
 
 const STATUS_LABEL: Record<AgentStatus, string> = {
   idle:     'ว่าง',
@@ -49,6 +50,31 @@ export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; co
             <span className={`w-2 h-2 rounded-full ${STATUS_DOT[agent.status]}`} />
             <span className="text-sm text-slate-200">{STATUS_LABEL[agent.status]}</span>
           </div>
+
+          {/* Alert banner — working/think agents inactive > 5 min */}
+          {(agent.status === 'working' || agent.status === 'thinking') && (() => {
+            const alert = alertDuration(agent.lastEventAt);
+            return alert.tier !== 'hidden' ? (
+              <div className={`mt-2 flex items-center justify-between rounded-lg px-3 py-2 ${alert.tier === 'alert' ? 'bg-amber-400/10 border border-amber-400/20' : alert.tier === 'stall' ? 'bg-orange-400/10 border border-orange-400/20' : 'bg-rose-500/10 border border-rose-500/20 animate-pulse'}`}>
+                <span className={`text-xs font-medium ${ALERT_COLOR[alert.tier]}`}>
+                  {alert.text}
+                </span>
+                {(alert.tier === 'stall' || alert.tier === 'stuck') && (
+                  <button
+                    data-testid={`kill-btn-${agent.id}`}
+                    onClick={() => {
+                      if (confirm(`Kill ${agent.name} worker?`)) {
+                        useStore.getState().killAgent(agent.id);
+                      }
+                    }}
+                    className="text-xs rounded px-2 py-0.5 bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 border border-rose-500/30 transition-colors"
+                  >
+                    kill
+                  </button>
+                )}
+              </div>
+            ) : null;
+          })()}
           {agent.status === 'idle' && (() => {
             const idle = idleDuration(agent.lastEventAt, !!agent.currentTask);
             return idle.tier !== 'hidden' ? (

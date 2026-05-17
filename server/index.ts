@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { cors } from 'hono/cors';
-import { PORT, AGENT_IDS } from './config.ts';
+import { spawn } from 'node:child_process';
+import { PORT, AGENT_IDS, AGENTS, type AgentId } from './config.ts';
 import { state } from './state/engine.ts';
 import type { ServerEvent } from './state/types.ts';
 import { startHermesWatcher } from './watchers/hermes.ts';
@@ -76,15 +77,69 @@ app.get('/api/stream', (c) =>
   })
 );
 
+app.post('/api/agent/:id/kill', async (c) => {
+  const id = c.req.param('id') as AgentId;
+
+  // Validate: must be a hermes team agent (not ziyue)
+  if (!AGENT_IDS.includes(id)) {
+    return c.json({ error: 'invalid agent id' }, 400);
+  }
+  if (AGENTS[id].team === 'core') {
+    return c.json({ error: 'cannot kill core team agent' }, 403);
+  }
+
+  // Find worker PID matching how system-health.ts discovers agents
+  const findPid = (): Promise<number | null> => {
+    return new Promise((resolve) => {
+      const proc = spawn('pgrep', ['-f', `profile ${id}.*kanban-worker`]);
+      let out = '';
+      proc.stdout.on('data', (b) => { out += b.toString(); });
+      proc.on('close', (code) => {
+        if (code !== 0 || !out.trim()) { resolve(null); return; }
+        const pid = parseInt(out.trim().split('\n')[0]!, 10);
+        resolve(isNaN(pid) ? null : pid);
+      });
+      proc.on('error', () => resolve(null));
+    });
+  };
+
+  const pid = await findPid();
+  if (!pid) {
+    return c.json({ killed: false, pid: null, signal: 'none' as const });
+  }
+
+  // SIGTERM
+  process.kill(pid, 'SIGTERM');
+  await new Promise<void>((resolve) => setTimeout(resolve, 3000));
+
+  // Check if still alive → SIGKILL
+  let signal: 'TERM' | 'KILL' | 'none' = 'TERM';
+  try {
+    process.kill(pid, 0); // signal 0 = check alive
+    process.kill(pid, 'SIGKILL');
+    signal = 'KILL';
+  } catch {
+    // process already dead
+    signal = 'TERM';
+  }
+
+  // Clear blockReason via onKanbanIdle pattern
+  state.onKanbanIdle(id);
+
+  return c.json({ killed: true, pid, signal });
+});
+
 // ---- Mock data driver (only when HEAVENEYE_MOCK=1) ----
 if (process.env.HEAVENEYE_MOCK === '1') {
   console.log('[heaveneye] MOCK MODE enabled — no real data sources');
+  // lastEventAt starts 25 min ago for first scene (triggers stuck alert on working agents)
+  let sceneMs = 25 * 60 * 1000;
   const scenes = [
-    () => state.mock('ziyue',    { status: 'working',  currentTask: { id: 't_demo', title: 'รับคำสั่งจากพี่เบญ' }, lastTool: 'Write' }),
-    () => state.mock('anmaioyi', { status: 'thinking', currentTask: { id: 't_demo2', title: 'แตกงาน EP002' } }),
-    () => state.mock('wenshu',   { status: 'working',  currentTask: { id: 't_w1', title: 'เขียน script' }, lastTool: 'Edit' }),
-    () => state.mock('yanxin',   { status: 'working',  currentTask: { id: 't_y1', title: 'ทำ thumbnail copy' }, lastTool: 'Read' }),
-    () => state.mock('jianfeng', { status: 'idle' }),
+    () => { sceneMs = 25 * 60 * 1000; state.mock('ziyue',    { status: 'working',  currentTask: { id: 't_demo', title: 'รับคำสั่งจากพี่เบญ' }, lastTool: 'Write', lastEventAt: new Date(Date.now() - sceneMs).toISOString() }); },
+    () => { sceneMs = 8 * 60 * 1000; state.mock('anmaioyi', { status: 'thinking', currentTask: { id: 't_demo2', title: 'แตกงาน EP002' }, lastEventAt: new Date(Date.now() - sceneMs).toISOString() }); },
+    () => { sceneMs = 15 * 60 * 1000; state.mock('wenshu',   { status: 'working',  currentTask: { id: 't_w1', title: 'เขียน script' }, lastTool: 'Edit', lastEventAt: new Date(Date.now() - sceneMs).toISOString() }); },
+    () => { sceneMs = 6 * 60 * 1000; state.mock('yanxin',   { status: 'working',  currentTask: { id: 't_y1', title: 'ทำ thumbnail copy' }, lastTool: 'Read', lastEventAt: new Date(Date.now() - sceneMs).toISOString() }); },
+    () => { sceneMs = 60 * 60 * 1000; state.mock('jianfeng', { status: 'idle', lastEventAt: new Date(Date.now() - sceneMs).toISOString() }); },
   ];
   let i = 0;
   setInterval(() => {

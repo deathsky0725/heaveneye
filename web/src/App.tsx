@@ -12,6 +12,9 @@ import type { AgentId, AgentSnapshot } from './types';
 export default function App() {
   const agents = useStore((s) => s.agents);
   const connected = useStore((s) => s.connected);
+  const killError = useStore((s) => s.killError);
+  const killSuccess = useStore((s) => s.killSuccess);
+  const clearKillFeedback = useStore((s) => s.clearKillFeedback);
   const orgRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { connectStream(); startUsage5hPolling(); fetchInitialInbox(); fetchInitialEvents(); fetchInitialHealth(); }, []);
@@ -33,6 +36,12 @@ export default function App() {
               <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-rose-500'}`} />
               {connected ? 'connected' : 'disconnected'}
             </div>
+            {(killError || killSuccess) && (
+              <div className={`text-xs rounded px-3 py-1.5 ml-4 ${killError ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}`}>
+                {killError ?? killSuccess}
+                <button onClick={clearKillFeedback} className="ml-2 opacity-60 hover:opacity-100">×</button>
+              </div>
+            )}
           </div>
           <div className="min-w-0">
             <UsagePanel />

@@ -10,10 +10,14 @@ interface State {
   events: KanbanEventEntry[];
   systemHealth: SystemHealth | null;
   notifications: NotificationEntry[];
+  killError: string | null;
+  killSuccess: string | null;
   apply: (ev: ServerEvent) => void;
   setConnected: (v: boolean) => void;
   setUsage5h: (v: Usage5hEntry[]) => void;
   markInboxFlashShown: () => void;
+  killAgent: (id: string) => Promise<{ killed: boolean; pid: number | null; signal: string }>;
+  clearKillFeedback: () => void;
 }
 
 export const useStore = create<State>((set) => ({
@@ -25,9 +29,28 @@ export const useStore = create<State>((set) => ({
   events: [],
   systemHealth: null,
   notifications: [],
+  killError: null,
+  killSuccess: null,
   setConnected: (v) => set({ connected: v }),
   setUsage5h: (v) => set({ usage5h: v }),
   markInboxFlashShown: () => set({ inboxFlash: null }),
+  clearKillFeedback: () => set({ killError: null, killSuccess: null }),
+  killAgent: async (id) => {
+    const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
+    try {
+      const res = await fetch(`${base}/api/agent/${id}/kill`, { method: 'POST' });
+      const data = await res.json() as { killed: boolean; pid: number | null; signal: string };
+      if (data.killed) {
+        set({ killSuccess: `Worker PID ${data.pid} killed (signal ${data.signal})`, killError: null });
+      } else {
+        set({ killError: 'No active worker found for this agent', killSuccess: null });
+      }
+      return data;
+    } catch {
+      set({ killError: 'Failed to reach server', killSuccess: null });
+      return { killed: false, pid: null, signal: 'none' };
+    }
+  },
   apply: (ev) => {
     if (ev.type === 'snapshot') {
       set({ agents: ev.agents });

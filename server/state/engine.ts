@@ -352,7 +352,14 @@ class StateEngine {
 
   // === Mock helper for dev ===
   mock(id: AgentId, partial: Partial<AgentSnapshot>) {
-    this.patch(id, partial);
+    const cur = this.agents.get(id)!;
+    // Preserve lastEventAt if provided in partial (don't auto-overwrite during mock)
+    const withLastEvent = partial.lastEventAt !== undefined
+      ? partial
+      : { ...partial, lastEventAt: new Date().toISOString() };
+    const next: AgentSnapshot = { ...cur, ...withLastEvent };
+    this.agents.set(id, next);
+    this.emit(next);
   }
 
   // === Inbox events ===
