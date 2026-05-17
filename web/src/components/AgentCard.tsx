@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import type { AgentSnapshot, AgentStatus } from '../types';
 import { RiveAvatar } from './RiveAvatar';
 import { TokenBadge } from './TokenBadge';
+import { StatChart } from './StatChart';
 import { idleDuration, IDLE_COLOR } from '../lib/idle';
 
 const STATUS_LABEL: Record<AgentStatus, string> = {
@@ -22,6 +24,7 @@ const STATUS_DOT: Record<AgentStatus, string> = {
 };
 
 export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; compact?: boolean }) {
+  const [showHistory, setShowHistory] = useState(false);
   return (
     <div
       data-agent-id={agent.id}
@@ -79,7 +82,17 @@ export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; co
         </div>
       </div>
 
-      <TokenBadge usage={agent.tokensToday} />
+      <div className="mt-2 flex items-center justify-between">
+        <TokenBadge usage={agent.tokensToday} />
+        <button
+          onClick={() => setShowHistory((v) => !v)}
+          className="text-xs text-slate-400 hover:text-slate-200 transition-colors ml-2"
+        >
+          📊 history
+        </button>
+      </div>
+
+      {showHistory && <StatChart agentId={agent.id} />}
     </div>
   );
 }

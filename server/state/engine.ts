@@ -42,6 +42,10 @@ class StateEngine {
   private tokenEvents = new Map<AgentId, TokenEvent[]>();
   private static readonly WINDOW_MS = 5 * 60 * 60 * 1000;
 
+  /** Rolling 24h window of per-agent token events (separate storage for 24h endpoint) */
+  private tokenEvents24h = new Map<AgentId, TokenEvent[]>();
+  private static readonly WINDOW24H_MS = 24 * 60 * 60 * 1000;
+
   constructor() {
     for (const id of AGENT_IDS) this.agents.set(id, blankSnapshot(id));
     setInterval(() => { this.sweepIdle(); this.pruneWindows(); }, 5_000);
@@ -60,11 +64,15 @@ class StateEngine {
   }
 
   private pruneWindows() {
-    const cutoff = Date.now() - StateEngine.WINDOW_MS;
+    const cutoff5h = Date.now() - StateEngine.WINDOW_MS;
+    const cutoff24h = Date.now() - StateEngine.WINDOW24H_MS;
     for (const id of AGENT_IDS) {
-      const events = this.tokenEvents.get(id) ?? [];
-      const pruned = events.filter((e) => e.ts > cutoff);
-      this.tokenEvents.set(id, pruned);
+      // 5h window
+      const events5h = this.tokenEvents.get(id) ?? [];
+      this.tokenEvents.set(id, events5h.filter((e) => e.ts > cutoff5h));
+      // 24h window
+      const events24h = this.tokenEvents24h.get(id) ?? [];
+      this.tokenEvents24h.set(id, events24h.filter((e) => e.ts > cutoff24h));
     }
   }
 
@@ -117,6 +125,39 @@ class StateEngine {
     }
 
     return result;
+  }
+
+  /**
+   * 24h hourly buckets for a single agent — used by /api/usage/24h.
+   * Returns 24 buckets (most recent hour last), each summing all token
+   * components (input + output + cacheRead) for that hour.
+   */
+  getUsage24h(agentId: AgentId): Array<{ hour: string; total: number; input: number; output: number; cacheRead: number }> {
+    if (!AGENTS[agentId]) return [];
+    const now = Date.now();
+    const hourMs = 60 * 60 * 1000;
+    const buckets: Array<{ hour: string; total: number; input: number; output: number; cacheRead: number }> = [];
+
+    const events = this.tokenEvents24h.get(agentId) ?? [];
+    for (let i = 23; i >= 0; i--) {
+      const start = now - (i + 1) * hourMs;
+      const end = now - i * hourMs;
+      const inBucket = events.filter((e) => e.ts >= start && e.ts < end);
+      const sum = inBucket.reduce(
+        (acc, e) => ({
+          input: acc.input + e.usage.input,
+          output: acc.output + e.usage.output,
+          cacheRead: acc.cacheRead + e.usage.cacheRead,
+        }),
+        { input: 0, output: 0, cacheRead: 0 }
+      );
+      buckets.push({
+        hour: new Date(start).toISOString(),
+        total: sum.input + sum.output + sum.cacheRead,
+        ...sum,
+      });
+    }
+    return buckets;
   }
 
   snapshot(): AgentSnapshot[] {
@@ -279,14 +320,19 @@ class StateEngine {
     if (!AGENTS[id]) return;
     const cur = this.agents.get(id)!;
 
-    // Record rolling window event (model from current session; unknown for legacy Claude watcher)
-    const events = this.tokenEvents.get(id) ?? [];
-    events.push({
-      ts: Date.now(),
-      model: cur.currentModel ?? 'unknown',
-      usage,
-    });
-    this.tokenEvents.set(id, events);
+    // Record rolling window events (5h + 24h)
+    const model = cur.currentModel ?? 'unknown';
+    const entry = { ts: Date.now(), model, usage };
+
+    // 5h window
+    const events5h = this.tokenEvents.get(id) ?? [];
+    events5h.push(entry);
+    this.tokenEvents.set(id, events5h);
+
+    // 24h window
+    const events24h = this.tokenEvents24h.get(id) ?? [];
+    events24h.push(entry);
+    this.tokenEvents24h.set(id, events24h);
 
     const t = cur.tokensToday;
     const merged: TokenUsage = {

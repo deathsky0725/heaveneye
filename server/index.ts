@@ -21,6 +21,14 @@ app.get('/api/agents', (c) => c.json({ agents: state.snapshot() }));
 
 app.get('/api/usage/5h', (c) => c.json({ usage: state.getUsage5h() }));
 
+app.get('/api/usage/24h', (c) => {
+  const agent = c.req.query('agent');
+  if (!agent || !AGENT_IDS.includes(agent as any)) {
+    return c.json({ error: 'missing or invalid agent query param' }, 400);
+  }
+  return c.json({ agent, buckets: state.getUsage24h(agent as any) });
+});
+
 app.get('/api/inbox', async (c) => {
   try {
     const { readFile } = await import('node:fs/promises');
