@@ -19,7 +19,8 @@ export function StatChart({ agentId }: { agentId: AgentId }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/usage/24h?agent=${agentId}`)
+    const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
+    fetch(`${base}/api/usage/24h?agent=${agentId}`)
       .then((r) => r.json())
       .then((data: { agent: string; buckets: Bucket[] }) => {
         if (!cancelled) setBuckets(data.buckets ?? []);
