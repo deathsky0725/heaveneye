@@ -1,5 +1,5 @@
 import { AGENTS, AGENT_IDS, type AgentId } from '../config.ts';
-import type { AgentSnapshot, AgentStatus, TokenUsage, ServerEvent } from './types.ts';
+import type { AgentSnapshot, AgentStatus, TokenUsage, ServerEvent, KanbanEventEntry } from './types.ts';
 
 type Listener = (event: ServerEvent) => void;
 
@@ -34,6 +34,9 @@ class StateEngine {
   private listeners = new Set<Listener>();
   private doneTimers = new Map<AgentId, ReturnType<typeof setTimeout>>();
   private lastTokenAt = new Map<AgentId, number>();
+  private eventIdCounter = 0;
+  private kanbanBuffer: KanbanEventEntry[] = [];
+  private static readonly KANBAN_BUFFER_CAPACITY = 200;
 
   /** Rolling 5h window of per-agent token events */
   private tokenEvents = new Map<AgentId, TokenEvent[]>();
@@ -309,6 +312,21 @@ class StateEngine {
   // === Inbox events ===
   onInboxEntry(entry: import('../state/types.js').InboxEntry) {
     for (const l of this.listeners) l({ type: 'inbox_append', entry });
+  }
+
+  // === Kanban event feed ===
+  onKanbanEvent(entry: Omit<KanbanEventEntry, 'id'>) {
+    const e: KanbanEventEntry = { ...entry, id: ++this.eventIdCounter };
+    if (this.kanbanBuffer.length >= StateEngine.KANBAN_BUFFER_CAPACITY) {
+      this.kanbanBuffer.shift();
+    }
+    this.kanbanBuffer.push(e);
+    for (const l of this.listeners) l({ type: 'kanban_event', event: e });
+  }
+
+  getKanbanEvents(limit = 50): KanbanEventEntry[] {
+    const n = Math.min(limit, StateEngine.KANBAN_BUFFER_CAPACITY);
+    return this.kanbanBuffer.slice(-n);
   }
 }
 

@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { connectStream, startUsage5hPolling, fetchInitialInbox, useStore } from './store';
+import { connectStream, startUsage5hPolling, fetchInitialInbox, fetchInitialEvents, useStore } from './store';
 import { AgentCard } from './components/AgentCard';
 import { ConnectionLines } from './components/ConnectionLines';
 import { UsagePanel } from './components/UsagePanel';
 import { InboxPanel } from './components/InboxPanel';
+import { TaskFeedSidebar } from './components/TaskFeedSidebar';
 import type { AgentId, AgentSnapshot } from './types';
 
 export default function App() {
@@ -11,7 +12,7 @@ export default function App() {
   const connected = useStore((s) => s.connected);
   const orgRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { connectStream(); startUsage5hPolling(); fetchInitialInbox(); }, []);
+  useEffect(() => { connectStream(); startUsage5hPolling(); fetchInitialInbox(); fetchInitialEvents(); }, []);
 
   const byId = (id: AgentId): AgentSnapshot | undefined => agents.find((a) => a.id === id);
 
@@ -62,6 +63,7 @@ export default function App() {
         )}
       </div>
       <InboxPanel />
+      <TaskFeedSidebar />
     </>
   );
 }

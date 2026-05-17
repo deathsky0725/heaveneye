@@ -28,7 +28,18 @@ export interface AgentSnapshot {
 export type ServerEvent =
   | { type: 'snapshot'; agents: AgentSnapshot[] }
   | { type: 'patch'; agent: AgentSnapshot }
-  | { type: 'inbox_append'; entry: InboxEntry };
+  | { type: 'inbox_append'; entry: InboxEntry }
+  | { type: 'kanban_event'; event: KanbanEventEntry };
+
+export interface KanbanEventEntry {
+  id: number;       // monotonic counter — NOT the kanban event id
+  ts: string;      // ISO8601
+  agent: AgentId;
+  kind: 'claimed' | 'spawned' | 'completed' | 'blocked' | 'heartbeat' | 'decomposed' | 'unblocked';
+  task_id: string;
+  task_title?: string;
+  payload?: Record<string, any>;
+}
 
 export interface InboxEntry {
   ts: string;

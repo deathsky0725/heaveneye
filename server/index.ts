@@ -35,6 +35,11 @@ app.get('/api/inbox', async (c) => {
   }
 });
 
+app.get('/api/events', (c) => {
+  const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
+  return c.json({ events: state.getKanbanEvents(limit) });
+});
+
 app.get('/api/stream', (c) =>
   streamSSE(c, async (stream) => {
     const initial: ServerEvent = { type: 'snapshot', agents: state.snapshot() };

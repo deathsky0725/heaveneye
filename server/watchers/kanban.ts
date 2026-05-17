@@ -67,20 +67,24 @@ function handleEvent(row: KanbanEventRow, boardSlug: string): void {
   switch (row.kind) {
     case 'claimed':
       state.onKanbanActive(agent, boardSlug, row.task_id, taskTitle);
+      state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'claimed', task_id: row.task_id, task_title: taskTitle, payload });
       return;
 
     case 'spawned':
       state.onHermesToolUse(agent, 'spawn');
+      state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'spawned', task_id: row.task_id, task_title: taskTitle, payload });
       return;
 
     case 'heartbeat': {
       const note = typeof payload.note === 'string' ? payload.note.slice(0, 60) : 'heartbeat';
       state.onHermesToolUse(agent, note);
+      state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'heartbeat', task_id: row.task_id, task_title: taskTitle, payload });
       return;
     }
 
     case 'completed':
       state.onKanbanIdle(agent);
+      state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'completed', task_id: row.task_id, task_title: taskTitle, payload });
       return;
 
     case 'crashed':
@@ -88,6 +92,7 @@ function handleEvent(row: KanbanEventRow, boardSlug: string): void {
     case 'timed_out':
       state.onKanbanIdle(agent);
       state.onHermesEvent({ agent, task_id: row.task_id, event: 'failed', payload });
+      state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'blocked', task_id: row.task_id, task_title: taskTitle, payload: { reason: row.kind } });
       return;
 
     case 'blocked': {
@@ -107,11 +112,13 @@ function handleEvent(row: KanbanEventRow, boardSlug: string): void {
       }
       if (!reason) reason = 'blocked';
       state.onKanbanBlocked(agent, reason, row.task_id, taskTitle, boardSlug);
+      state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'blocked', task_id: row.task_id, task_title: taskTitle, payload: { reason, ...payload } });
       return;
     }
 
     case 'unblocked':
       state.onKanbanUnblocked(agent);
+      state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'unblocked', task_id: row.task_id, task_title: taskTitle, payload });
       return;
   }
 }

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AgentSnapshot, ServerEvent, Usage5hEntry, InboxEntry } from './types';
+import type { AgentSnapshot, ServerEvent, Usage5hEntry, InboxEntry, KanbanEventEntry } from './types';
 
 interface State {
   agents: AgentSnapshot[];
@@ -7,6 +7,7 @@ interface State {
   usage5h: Usage5hEntry[];
   inbox: InboxEntry[];
   inboxFlash: string | null; // id of the newly appended entry
+  events: KanbanEventEntry[];
   apply: (ev: ServerEvent) => void;
   setConnected: (v: boolean) => void;
   setUsage5h: (v: Usage5hEntry[]) => void;
@@ -19,6 +20,7 @@ export const useStore = create<State>((set) => ({
   usage5h: [],
   inbox: [],
   inboxFlash: null,
+  events: [],
   setConnected: (v) => set({ connected: v }),
   setUsage5h: (v) => set({ usage5h: v }),
   markInboxFlashShown: () => set({ inboxFlash: null }),
@@ -34,6 +36,8 @@ export const useStore = create<State>((set) => ({
       set((s) => ({ inbox: [...s.inbox, ev.entry], inboxFlash: key }));
     } else if (ev.type === 'inbox_reset') {
       set({ inbox: [], inboxFlash: null });
+    } else if (ev.type === 'kanban_event') {
+      set((s) => ({ events: [ev.event, ...s.events].slice(0, 500) }));
     }
   },
 }));
@@ -99,4 +103,12 @@ export function fetchInitialInbox() {
     .then((res) => res.ok ? res.json() : Promise.reject())
     .then((entries: InboxEntry[]) => useStore.setState({ inbox: entries }))
     .catch(() => { /* inbox stays empty — SSE will append new entries */ });
+}
+
+export function fetchInitialEvents() {
+  const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
+  fetch(`${base}/api/events?limit=50`)
+    .then((res) => res.ok ? res.json() : Promise.reject())
+    .then((data: { events: KanbanEventEntry[] }) => useStore.setState({ events: data.events.reverse() }))
+    .catch(() => { /* events stay empty — SSE will prepend new ones */ });
 }

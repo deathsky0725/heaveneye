@@ -24,11 +24,22 @@ export interface AgentSnapshot {
   blockReason?: string;
 }
 
+export interface KanbanEventEntry {
+  id: number;
+  ts: string;
+  agent: AgentId;
+  kind: 'claimed' | 'spawned' | 'completed' | 'blocked' | 'heartbeat' | 'decomposed' | 'unblocked';
+  task_id: string;
+  task_title?: string;
+  payload?: Record<string, unknown>;
+}
+
 export type ServerEvent =
   | { type: 'snapshot'; agents: AgentSnapshot[] }
   | { type: 'patch'; agent: AgentSnapshot }
   | { type: 'inbox_append'; entry: InboxEntry }
-  | { type: 'inbox_reset' };
+  | { type: 'inbox_reset' }
+  | { type: 'kanban_event'; event: KanbanEventEntry };
 
 export interface Usage5hEntry {
   agent: AgentId;
