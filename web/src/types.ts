@@ -26,7 +26,9 @@ export interface AgentSnapshot {
 
 export type ServerEvent =
   | { type: 'snapshot'; agents: AgentSnapshot[] }
-  | { type: 'patch'; agent: AgentSnapshot };
+  | { type: 'patch'; agent: AgentSnapshot }
+  | { type: 'inbox_append'; entry: InboxEntry }
+  | { type: 'inbox_reset' };
 
 export interface Usage5hEntry {
   agent: AgentId;
@@ -38,3 +40,16 @@ export interface Usage5hEntry {
   windowStartedAt: number | null;
   nextResetAt: number | null;
 }
+
+export type Priority = 'low' | 'medium' | 'high' | 'urgent';
+
+export interface InboxEntry {
+  id: string;
+  timestamp: string; // ISO-8601
+  from: string;
+  message: string;
+  action_required: boolean;
+  priority: Priority;
+}
+
+export type InboxEvent = { type: 'inbox_append'; entry: InboxEntry };

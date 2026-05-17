@@ -1,21 +1,27 @@
 import { create } from 'zustand';
-import type { AgentSnapshot, ServerEvent, Usage5hEntry } from './types';
+import type { AgentSnapshot, ServerEvent, Usage5hEntry, InboxEntry } from './types';
 
 interface State {
   agents: AgentSnapshot[];
   connected: boolean;
   usage5h: Usage5hEntry[];
+  inbox: InboxEntry[];
+  inboxFlash: string | null; // id of the newly appended entry
   apply: (ev: ServerEvent) => void;
   setConnected: (v: boolean) => void;
   setUsage5h: (v: Usage5hEntry[]) => void;
+  markInboxFlashShown: () => void;
 }
 
 export const useStore = create<State>((set) => ({
   agents: [],
   connected: false,
   usage5h: [],
+  inbox: [],
+  inboxFlash: null,
   setConnected: (v) => set({ connected: v }),
   setUsage5h: (v) => set({ usage5h: v }),
+  markInboxFlashShown: () => set({ inboxFlash: null }),
   apply: (ev) => {
     if (ev.type === 'snapshot') {
       set({ agents: ev.agents });
@@ -23,6 +29,10 @@ export const useStore = create<State>((set) => ({
       set((s) => ({
         agents: s.agents.map((a) => (a.id === ev.agent.id ? ev.agent : a)),
       }));
+    } else if (ev.type === 'inbox_append') {
+      set((s) => ({ inbox: [...s.inbox, ev.entry], inboxFlash: ev.entry.id }));
+    } else if (ev.type === 'inbox_reset') {
+      set({ inbox: [], inboxFlash: null });
     }
   },
 }));

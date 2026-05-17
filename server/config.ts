@@ -19,6 +19,16 @@ export const HERMES_STATUS_PATH = join(
 export const HEAVENEYE_EVENT_FILE = process.env.HEAVENEYE_EVENT_FILE
   ?? join(HOME, '.hermes', 'heaveneye-events.jsonl');
 
+export const INBOX_PATH = join(
+  HOME,
+  'Documents/Agentic-OS/Context/ji-ziyue-inbox.jsonl'
+);
+
+export const INBOX_STATUS_PATH = join(
+  HOME,
+  'Documents/Agentic-OS/Context/status.jsonl'
+);
+
 export const CLAUDE_PROJECTS_ROOT = join(HOME, '.claude', 'projects');
 
 export type AgentId = 'ziyue' | 'anmaioyi' | 'wenshu' | 'yanxin' | 'jianfeng' | 'shihao' | 'yefan';

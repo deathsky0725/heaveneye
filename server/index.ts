@@ -8,6 +8,8 @@ import { startHermesWatcher } from './watchers/hermes.ts';
 import { startHermesEventWatcher } from './watchers/hermes-events.ts';
 import { startClaudeWatcher } from './watchers/claude.ts';
 import { startKanbanWatcher } from './watchers/kanban.ts';
+import { startInboxWatcher } from './watchers/inbox.ts';
+import { INBOX_PATH } from './config.ts';
 
 const app = new Hono();
 app.use('*', cors());
@@ -17,6 +19,21 @@ app.get('/api/health', (c) => c.json({ ok: true, ts: new Date().toISOString() })
 app.get('/api/agents', (c) => c.json({ agents: state.snapshot() }));
 
 app.get('/api/usage/5h', (c) => c.json({ usage: state.getUsage5h() }));
+
+app.get('/api/inbox', async (c) => {
+  try {
+    const { readFile } = await import('node:fs/promises');
+    const content = await readFile(INBOX_PATH, 'utf8');
+    const lines = content.split('\n').filter((l) => l.trim());
+    const entries = lines
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter(Boolean)
+      .slice(-20);
+    return c.json(entries);
+  } catch {
+    return c.json([]);
+  }
+});
 
 app.get('/api/stream', (c) =>
   streamSSE(c, async (stream) => {
@@ -71,6 +88,7 @@ if (process.env.HEAVENEYE_MOCK === '1') {
   startHermesWatcher({ replayHistory: replay }).catch(console.warn);
   startClaudeWatcher({ replayHistory: replay }).catch(console.warn);
   startKanbanWatcher({ replayHistory: replay }).catch(console.warn);
+  startInboxWatcher({ replayHistory: replay }).catch(console.warn);
   console.log('[heaveneye] Watchers started (async)');
 }
 

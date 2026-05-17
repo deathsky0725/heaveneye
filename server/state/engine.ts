@@ -305,6 +305,11 @@ class StateEngine {
   mock(id: AgentId, partial: Partial<AgentSnapshot>) {
     this.patch(id, partial);
   }
+
+  // === Inbox events ===
+  onInboxEntry(entry: import('../state/types.js').InboxEntry) {
+    for (const l of this.listeners) l({ type: 'inbox_append', entry });
+  }
 }
 
 export const state = new StateEngine();

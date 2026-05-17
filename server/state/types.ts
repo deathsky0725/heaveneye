@@ -27,4 +27,15 @@ export interface AgentSnapshot {
 
 export type ServerEvent =
   | { type: 'snapshot'; agents: AgentSnapshot[] }
-  | { type: 'patch'; agent: AgentSnapshot };
+  | { type: 'patch'; agent: AgentSnapshot }
+  | { type: 'inbox_append'; entry: InboxEntry };
+
+export interface InboxEntry {
+  ts: string;
+  from: string;
+  message: string;
+  action_required: string;
+  priority?: 'high' | 'normal' | 'low';
+  event: string;
+  task_id?: string;
+}
