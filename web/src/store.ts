@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AgentSnapshot, ServerEvent, Usage5hEntry, InboxEntry, KanbanEventEntry, SystemHealth } from './types';
+import type { AgentSnapshot, ServerEvent, Usage5hEntry, InboxEntry, KanbanEventEntry, SystemHealth, NotificationEntry } from './types';
 
 interface State {
   agents: AgentSnapshot[];
@@ -9,6 +9,7 @@ interface State {
   inboxFlash: string | null; // id of the newly appended entry
   events: KanbanEventEntry[];
   systemHealth: SystemHealth | null;
+  notifications: NotificationEntry[];
   apply: (ev: ServerEvent) => void;
   setConnected: (v: boolean) => void;
   setUsage5h: (v: Usage5hEntry[]) => void;
@@ -23,6 +24,7 @@ export const useStore = create<State>((set) => ({
   inboxFlash: null,
   events: [],
   systemHealth: null,
+  notifications: [],
   setConnected: (v) => set({ connected: v }),
   setUsage5h: (v) => set({ usage5h: v }),
   markInboxFlashShown: () => set({ inboxFlash: null }),
@@ -42,6 +44,8 @@ export const useStore = create<State>((set) => ({
       set((s) => ({ events: [ev.event, ...s.events].slice(0, 500) }));
     } else if (ev.type === 'system_health') {
       set({ systemHealth: ev.health });
+    } else if (ev.type === 'notification') {
+      set((s) => ({ notifications: [ev.entry, ...s.notifications].slice(0, 50) }));
     }
   },
 }));

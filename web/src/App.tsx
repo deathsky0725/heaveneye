@@ -6,6 +6,7 @@ import { UsagePanel } from './components/UsagePanel';
 import { InboxPanel } from './components/InboxPanel';
 import { TaskFeedSidebar } from './components/TaskFeedSidebar';
 import { SystemHealth } from './components/SystemHealth';
+import { DiscordPanel } from './components/DiscordPanel';
 import type { AgentId, AgentSnapshot } from './types';
 
 export default function App() {
@@ -39,6 +40,7 @@ export default function App() {
         </header>
 
         <SystemHealth />
+        <DiscordPanel />
 
         {agents.length === 0 ? (
           <div className="text-center text-slate-500 py-20">รอเชื่อมต่อ server...</div>

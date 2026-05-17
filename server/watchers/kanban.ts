@@ -55,7 +55,7 @@ function isKnownAgent(name: string | null | undefined): name is AgentId {
   return !!name && name in AGENTS;
 }
 
-function handleEvent(row: KanbanEventRow, boardSlug: string): void {
+function handleEvent(row: KanbanEventRow, boardSlug: string, db: Database): void {
   if (!isKnownAgent(row.assignee)) return;
   const agent = row.assignee;
   const taskTitle = row.title ?? row.task_id;
@@ -68,6 +68,7 @@ function handleEvent(row: KanbanEventRow, boardSlug: string): void {
     case 'claimed':
       state.onKanbanActive(agent, boardSlug, row.task_id, taskTitle);
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'claimed', task_id: row.task_id, task_title: taskTitle, payload });
+      dispatchNotification(db, row.task_id, taskTitle, 'claimed', agent);
       return;
 
     case 'spawned':
@@ -85,6 +86,7 @@ function handleEvent(row: KanbanEventRow, boardSlug: string): void {
     case 'completed':
       state.onKanbanIdle(agent);
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'completed', task_id: row.task_id, task_title: taskTitle, payload });
+      dispatchNotification(db, row.task_id, taskTitle, 'completed', agent);
       return;
 
     case 'crashed':
@@ -100,7 +102,7 @@ function handleEvent(row: KanbanEventRow, boardSlug: string): void {
       let reason = typeof payload.reason === 'string' ? payload.reason.trim() : '';
       if (!reason) {
         // Query latest comment by this agent on this task
-        const rows = b.db.query(`
+        const rows = db.query(`
           SELECT body FROM task_comments
           WHERE task_id = ? AND author = ?
           ORDER BY id DESC LIMIT 1
@@ -123,6 +125,49 @@ function handleEvent(row: KanbanEventRow, boardSlug: string): void {
   }
 }
 
+interface NotifySub {
+  platform: string;
+  chat_id: string;
+  thread_id: string;
+  user_id: string | null;
+}
+
+function dispatchNotification(db: Database, taskId: string, taskTitle: string | undefined, eventKind: string, agent: AgentId) {
+  const subs = db.query(`
+    SELECT platform, chat_id, thread_id, user_id
+    FROM kanban_notify_subs
+    WHERE task_id = ?
+  `).all(taskId) as NotifySub[];
+
+  for (const sub of subs) {
+    const embedText = buildDiscordEmbed(eventKind, agent, taskId, taskTitle);
+    state.onNotificationEntry({
+      ts: new Date().toISOString(),
+      platform: 'discord',
+      chat_id: sub.chat_id,
+      thread_id: sub.thread_id || undefined,
+      task_id: taskId,
+      task_title: taskTitle,
+      event_kind: eventKind,
+      agent,
+      message: embedText,
+    });
+  }
+}
+
+function buildDiscordEmbed(eventKind: string, agent: AgentId, taskId: string, taskTitle?: string): string {
+  const agentName = AGENTS[agent]?.name ?? agent;
+  const title = taskTitle ?? taskId;
+  switch (eventKind) {
+    case 'claimed':
+      return `**${agentName}** เริ่มทำงานแล้ว → \`${title}\``;
+    case 'completed':
+      return `✅ **${agentName}** ทำเสร็จแล้ว → \`${title}\``;
+    default:
+      return `\`${eventKind}\` · **${agentName}** · \`${title}\``;
+  }
+}
+
 function pollBoard(b: BoardState): void {
   const rows = b.db.query(`
     SELECT e.id, e.task_id, e.kind, e.payload, e.created_at,
@@ -135,7 +180,7 @@ function pollBoard(b: BoardState): void {
   `).all(b.lastEventId) as KanbanEventRow[];
 
   for (const row of rows) {
-    try { handleEvent(row, b.slug); }
+    try { handleEvent(row, b.slug, b.db); }
     catch (e) { console.warn('[kanban] handle error:', e); }
     b.lastEventId = row.id;
   }

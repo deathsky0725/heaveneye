@@ -67,13 +67,17 @@ Persona + custom skill อยู่ที่ `~/Documents/Agentic-OS/Context/` (
 
 Top ของ comment ต้องมี `@<name>` — `@ji-ziyue` / `@user` / `@anmaioyi` — ห้ามตั้งสมมติฐานว่าใครจะมาเห็นเอง
 
-### H3 — An Maioyi: ห้าม fire-and-forget
+### H3 — An Maioyi: complete parent ทันทีหลัง decompose (UPDATED 2026-05-17)
 
-หลัง decompose:
-1. **Keep parent task running** จนกว่า children จะเสร็จ/blocked
-2. **Poll children** ทุก ~5 นาที
-3. **Relay block** กลับให้ผู้สั่ง (parent task author) — ถ้าเป็น user → Discord reply, ถ้าเป็น ji-ziyue → comment ใน parent + mention
-4. ห้าม mark parent done ก่อน children จะ resolve ทั้งหมด
+**Authoritative rule = `Context/personas/anmaioyi.md` HM1 + HM1-EXIT**
+
+สรุปสั้น:
+1. หลัง `kanban_create` children + `notify-subscribe` ครบ → **fire `kanban_complete` ทันทีใน tool sequence เดียว**
+2. **ห้าม monitor / poll children** — กิน API call เปล่า + เสี่ยง MiniMax stall
+3. Visual relay เกิดผ่าน Heaveneye dashboard + Discord notification — ไม่ใช่หน้าที่ anmaioyi
+4. ถ้า child block → notify-subscribe จะ ping user ตรง (anmaioyi ไม่ต้องเป็น relay)
+
+**Old "keep parent running + poll" rule (removed) ทำให้ session crash จาก MiniMax stall ระหว่าง poll loop**
 
 ### H4 — Block ต้อง mark blocked (ไม่ใช่ค้าง running)
 

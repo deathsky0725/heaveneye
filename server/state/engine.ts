@@ -1,5 +1,5 @@
 import { AGENTS, AGENT_IDS, type AgentId } from '../config.ts';
-import type { AgentSnapshot, AgentStatus, TokenUsage, ServerEvent, KanbanEventEntry } from './types.ts';
+import type { AgentSnapshot, AgentStatus, TokenUsage, ServerEvent, KanbanEventEntry, NotificationEntry } from './types.ts';
 
 type Listener = (event: ServerEvent) => void;
 
@@ -327,6 +327,25 @@ class StateEngine {
   getKanbanEvents(limit = 50): KanbanEventEntry[] {
     const n = Math.min(limit, StateEngine.KANBAN_BUFFER_CAPACITY);
     return this.kanbanBuffer.slice(-n);
+  }
+
+  // === Notification log ===
+  private notificationIdCounter = 0;
+  private notificationBuffer: NotificationEntry[] = [];
+  private static readonly NOTIFICATION_BUFFER_CAPACITY = 50;
+
+  onNotificationEntry(entry: Omit<NotificationEntry, 'id'>): void {
+    const e: NotificationEntry = { ...entry, id: ++this.notificationIdCounter };
+    if (this.notificationBuffer.length >= StateEngine.NOTIFICATION_BUFFER_CAPACITY) {
+      this.notificationBuffer.shift();
+    }
+    this.notificationBuffer.push(e);
+    for (const l of this.listeners) l({ type: 'notification', entry: e });
+  }
+
+  getNotifications(limit = 50): NotificationEntry[] {
+    const n = Math.min(limit, StateEngine.NOTIFICATION_BUFFER_CAPACITY);
+    return this.notificationBuffer.slice(-n);
   }
 
   // === System health ===

@@ -40,7 +40,8 @@ export type ServerEvent =
   | { type: 'inbox_append'; entry: InboxEntry }
   | { type: 'inbox_reset' }
   | { type: 'kanban_event'; event: KanbanEventEntry }
-  | { type: 'system_health'; health: SystemHealth };
+  | { type: 'system_health'; health: SystemHealth }
+  | { type: 'notification'; entry: NotificationEntry };
 
 export interface Usage5hEntry {
   agent: AgentId;
@@ -85,4 +86,17 @@ export interface GatewayHealth {
 export interface SystemHealth {
   checkedAt: string;
   gateways: GatewayHealth[];
+}
+
+export interface NotificationEntry {
+  id: number;
+  ts: string;
+  platform: 'discord';
+  chat_id: string;
+  thread_id?: string;
+  task_id: string;
+  task_title?: string;
+  event_kind: string;
+  agent: AgentId;
+  message: string;
 }

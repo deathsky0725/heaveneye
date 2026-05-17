@@ -30,6 +30,7 @@ export type ServerEvent =
   | { type: 'patch'; agent: AgentSnapshot }
   | { type: 'inbox_append'; entry: InboxEntry }
   | { type: 'kanban_event'; event: KanbanEventEntry }
+  | { type: 'notification'; entry: NotificationEntry }
   | { type: 'system_health'; health: SystemHealth };
 
 export interface KanbanEventEntry {
@@ -63,4 +64,17 @@ export interface GatewayHealth {
 export interface SystemHealth {
   checkedAt: string;
   gateways: GatewayHealth[];
+}
+
+export interface NotificationEntry {
+  id: number;
+  ts: string;
+  platform: 'discord';
+  chat_id: string;
+  thread_id?: string;
+  task_id: string;
+  task_title?: string;
+  event_kind: string;
+  agent: AgentId;
+  message: string;     // simulated Discord embed text
 }
