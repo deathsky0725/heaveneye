@@ -30,7 +30,8 @@ export const useStore = create<State>((set) => ({
         agents: s.agents.map((a) => (a.id === ev.agent.id ? ev.agent : a)),
       }));
     } else if (ev.type === 'inbox_append') {
-      set((s) => ({ inbox: [...s.inbox, ev.entry], inboxFlash: ev.entry.id }));
+      const key = `${ev.entry.ts}-${ev.entry.from}-${Date.now()}`;
+      set((s) => ({ inbox: [...s.inbox, ev.entry], inboxFlash: key }));
     } else if (ev.type === 'inbox_reset') {
       set({ inbox: [], inboxFlash: null });
     }
@@ -96,6 +97,6 @@ export function fetchInitialInbox() {
   const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
   fetch(`${base}/api/inbox`)
     .then((res) => res.ok ? res.json() : Promise.reject())
-    .then((entries: InboxEntry[]) => useStore.getState().set({ inbox: entries }))
+    .then((entries: InboxEntry[]) => useStore.setState({ inbox: entries }))
     .catch(() => { /* inbox stays empty — SSE will append new entries */ });
 }

@@ -28,7 +28,7 @@ interface InboxEntryRowProps {
 
 function InboxEntryRow({ entry, isFlashing, onFlashDone }: InboxEntryRowProps) {
   const priority = entry.priority ?? 'medium';
-  const cfg = PRIORITY_CONFIG[priority];
+  const cfg = PRIORITY_CONFIG[priority] ?? PRIORITY_CONFIG.medium;
   const rowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,7 +58,7 @@ function InboxEntryRow({ entry, isFlashing, onFlashDone }: InboxEntryRowProps) {
       <p className="text-sm text-slate-300 leading-relaxed">{entry.message}</p>
       {/* Footer */}
       <div className="flex items-center justify-between gap-2 mt-1">
-        <span className="text-xs text-slate-500">{formatRelativeTime(entry.timestamp)}</span>
+        <span className="text-xs text-slate-500">{formatRelativeTime(entry.ts)}</span>
         {entry.action_required && (
           <span className="text-xs font-medium text-amber-400 flex items-center gap-1">
             <span>⚡</span>Action required
@@ -102,13 +102,14 @@ export function InboxPanel() {
             ) : (
               /* Entries — newest last so newest appear at bottom */
               <div className="flex flex-col gap-2">
-                {[...inbox].map((entry) => {
-                  if (!entry?.id) return null;
+                {[...inbox].map((entry, i) => {
+                  if (!entry || !entry.ts) return null;
+                  const key = `${entry.ts}-${entry.from}-${i}`;
                   return (
                     <InboxEntryRow
-                      key={entry.id}
+                      key={key}
                       entry={entry}
-                      isFlashing={inboxFlash === entry.id}
+                      isFlashing={inboxFlash === key}
                       onFlashDone={markInboxFlashShown}
                     />
                   );
