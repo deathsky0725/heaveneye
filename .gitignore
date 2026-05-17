@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.bun/
+bun.lockb.tmp
+
+# Build output
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Cache
+.cache/
+.npm/
+.eslintcache
+
+# Logs
+*.log
+npm-debug.log*
+/tmp/heaveneye.log
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.history/
+
+# macOS
+.DS_Store
+
+# Test
+coverage/
+.nyc_output/
+
+# Misc
+*.tmp
+*.bak
