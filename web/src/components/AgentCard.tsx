@@ -92,7 +92,7 @@ export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; co
         </button>
       </div>
 
-      {showHistory && <StatChart agentId={agent.id} />}
+      {showHistory && <StatChart agentId={agent.id} compact={compact} />}
     </div>
   );
 }

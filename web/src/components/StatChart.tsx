@@ -11,22 +11,31 @@ interface Bucket {
 
 const HOUR_LABELS = ['00:00', '06:00', '12:00', '18:00'];
 
-export function StatChart({ agentId }: { agentId: AgentId }) {
+export function StatChart({ agentId, compact = false }: { agentId: AgentId; compact?: boolean }) {
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [loading, setLoading] = useState(true);
   const [tooltip, setTooltip] = useState<{ bucket: Bucket; x: number; y: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const loadingStartRef = useRef<number>(Date.now());
 
   useEffect(() => {
     let cancelled = false;
     const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
+    loadingStartRef.current = Date.now();
+    setLoading(true);
     fetch(`${base}/api/usage/24h?agent=${agentId}`)
       .then((r) => r.json())
       .then((data: { agent: string; buckets: Bucket[] }) => {
         if (!cancelled) setBuckets(data.buckets ?? []);
       })
       .catch(() => { /* silent */ })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .finally(() => {
+        if (!cancelled) {
+          const elapsed = Date.now() - loadingStartRef.current;
+          const remaining = Math.max(0, 200 - elapsed);
+          setTimeout(() => setLoading(false), remaining);
+        }
+      });
     return () => { cancelled = true; };
   }, [agentId]);
 
@@ -38,9 +47,14 @@ export function StatChart({ agentId }: { agentId: AgentId }) {
     return <div className="text-xs text-slate-500 py-2">ไม่มีข้อมูล 24 ชม.</div>;
   }
 
+  const allZero = buckets.every((b) => b.total === 0);
+  if (allZero) {
+    return <div className="text-xs text-slate-500 py-2">ไม่มีข้อมูล token usage ใน 24 ชม.</div>;
+  }
+
   // SVG dimensions
   const W = 400;
-  const H = 120;
+  const H = compact ? 80 : 120;
   const PAD_L = 10;
   const PAD_R = 10;
   const PAD_T = 10;
@@ -54,10 +68,10 @@ export function StatChart({ agentId }: { agentId: AgentId }) {
 
   const maxTotal = Math.max(...buckets.map((b) => b.total), 1);
 
-  const getBarHeight = (total: number) => (total / maxTotal) * CHART_H;
+  const getBarHeight = (total: number) => Math.max(2, (total / maxTotal) * CHART_H);
 
-  // X-axis label positions (every 6h)
-  const labelHours = [0, 6, 12, 18];
+  // X-axis label positions — every 6h (normal), every 12h (compact)
+  const labelHours = compact ? [0, 12] : [0, 6, 12, 18];
 
   return (
     <div className="mt-3 relative">
