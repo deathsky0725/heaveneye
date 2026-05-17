@@ -6,6 +6,7 @@ const PRIORITY_CONFIG: Record<Priority, { label: string; dot: string; pill: stri
   low:    { label: 'Low',    dot: 'bg-slate-400',       pill: 'bg-slate-700 text-slate-300' },
   medium: { label: 'Medium', dot: 'bg-blue-400',        pill: 'bg-blue-900 text-blue-300' },
   high:   { label: 'High',   dot: 'bg-amber-400',       pill: 'bg-amber-900 text-amber-300' },
+  normal: { label: 'Normal', dot: 'bg-blue-400',        pill: 'bg-blue-900 text-blue-300' },
   urgent: { label: 'Urgent', dot: 'bg-rose-500 animate-pulse', pill: 'bg-rose-900 text-rose-300' },
 };
 
