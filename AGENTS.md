@@ -1,6 +1,6 @@
 # AGENTS.md — Heaveneye Project Context
 
-> โหลดอัตโนมัติเมื่อ agent ทำงานใน `/Users/ben/Documents/Agentic-OS/Projects/heaveneye/`
+> โหลดอัตโนมัติเมื่อ agent ทำงานใน `./` (project root)
 
 ## ⭐ Shared team library
 
@@ -33,7 +33,7 @@ Persona + custom skill อยู่ที่ `~/Documents/Agentic-OS/Context/` (
 
 ## Working Directory
 
-ทุกการแก้ไขทำใน `/Users/ben/Documents/Agentic-OS/Projects/heaveneye/` เท่านั้น:
+ทุกการแก้ไขทำใน `./` (project root) เท่านั้น:
 - `server/` — Hono app, state engine, watchers
 - `web/src/` — React app
 - `plan.md` — architecture + phase plan + backlog
@@ -91,5 +91,5 @@ Dashboard heaveneye แสดงสีเหลืองสำหรับ block
 
 ## Reference
 
-- Personas อยู่ที่ `/Users/ben/Documents/Agentic-OS/Projects/yt-deathskylife/personas/` (shared across projects)
+- Personas อยู่ที่ `~/Documents/Agentic-OS/Projects/yt-deathskylife/personas/` (shared across projects)
 - Quick map ของ heaveneye codebase ดูใน `personas/shihao.md`

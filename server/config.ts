@@ -1,7 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-// If running inside a profile home (~ = /Users/ben/.hermes/profiles/<profile>/home),
+// If running inside a profile home (~ = ~/.hermes/profiles/<profile>/home),
 // use the real user home for user-level paths. Otherwise use standard homedir().
 const REAL_HOME = process.env.HERMES_HOME
   ? join(process.env.HERMES_HOME, '..', '..', '..')
