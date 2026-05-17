@@ -328,6 +328,18 @@ class StateEngine {
     const n = Math.min(limit, StateEngine.KANBAN_BUFFER_CAPACITY);
     return this.kanbanBuffer.slice(-n);
   }
+
+  // === System health ===
+  private latestHealth: import('../state/types.js').SystemHealth | null = null;
+
+  onSystemHealth(health: import('../state/types.js').SystemHealth) {
+    this.latestHealth = health;
+    for (const l of this.listeners) l({ type: 'system_health', health });
+  }
+
+  getSystemHealth(): import('../state/types.js').SystemHealth | null {
+    return this.latestHealth;
+  }
 }
 
 export const state = new StateEngine();

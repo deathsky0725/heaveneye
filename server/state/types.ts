@@ -29,7 +29,8 @@ export type ServerEvent =
   | { type: 'snapshot'; agents: AgentSnapshot[] }
   | { type: 'patch'; agent: AgentSnapshot }
   | { type: 'inbox_append'; entry: InboxEntry }
-  | { type: 'kanban_event'; event: KanbanEventEntry };
+  | { type: 'kanban_event'; event: KanbanEventEntry }
+  | { type: 'system_health'; health: SystemHealth };
 
 export interface KanbanEventEntry {
   id: number;       // monotonic counter — NOT the kanban event id
@@ -49,4 +50,17 @@ export interface InboxEntry {
   priority?: 'high' | 'normal' | 'low';
   event: string;
   task_id?: string;
+}
+
+export interface GatewayHealth {
+  profile: AgentId;
+  pid: number | null;
+  startedAt: string | null;   // ISO8601 — process lstart
+  alive: boolean;
+  lastCheckedAt: string;       // ISO8601 — when this status was sampled
+}
+
+export interface SystemHealth {
+  checkedAt: string;
+  gateways: GatewayHealth[];
 }

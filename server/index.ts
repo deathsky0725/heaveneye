@@ -9,12 +9,13 @@ import { startHermesEventWatcher } from './watchers/hermes-events.ts';
 import { startClaudeWatcher } from './watchers/claude.ts';
 import { startKanbanWatcher } from './watchers/kanban.ts';
 import { startInboxWatcher } from './watchers/inbox.ts';
+import { startSystemHealthWatcher } from './watchers/system-health.ts';
 import { INBOX_PATH } from './config.ts';
 
 const app = new Hono();
 app.use('*', cors());
 
-app.get('/api/health', (c) => c.json({ ok: true, ts: new Date().toISOString() }));
+app.get('/api/health', (c) => c.json(state.getSystemHealth() ?? { checkedAt: new Date().toISOString(), gateways: [] }));
 
 app.get('/api/agents', (c) => c.json({ agents: state.snapshot() }));
 
@@ -94,6 +95,7 @@ if (process.env.HEAVENEYE_MOCK === '1') {
   startClaudeWatcher({ replayHistory: replay }).catch(console.warn);
   startKanbanWatcher({ replayHistory: replay }).catch(console.warn);
   startInboxWatcher({ replayHistory: replay }).catch(console.warn);
+  startSystemHealthWatcher().catch(console.warn);
   console.log('[heaveneye] Watchers started (async)');
 }
 
