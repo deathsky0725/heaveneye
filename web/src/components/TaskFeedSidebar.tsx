@@ -224,9 +224,10 @@ export function TaskFeedSidebar() {
 
       {/* Collapsed tab — left side */}
       {!expanded && (
+        <div className="hidden sm:block">
         <button
           onClick={() => setExpanded(true)}
-          className="fixed left-4 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-1 px-2 py-3 rounded-r-xl bg-slate-800/90 border border-l-0 border-slate-700/60 shadow-lg hover:bg-slate-700 transition-colors"
+          className="fixed left-4 bottom-20 sm:bottom-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-1 px-2 py-3 rounded-r-xl bg-slate-800/90 border border-l-0 border-slate-700/60 shadow-lg hover:bg-slate-700 transition-colors"
           title="Open Feed"
         >
           <span className="text-base">📋</span>
@@ -239,6 +240,7 @@ export function TaskFeedSidebar() {
             </span>
           )}
         </button>
+      </div>
       )}
     </>
   );

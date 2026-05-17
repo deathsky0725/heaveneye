@@ -20,7 +20,7 @@ export default function App() {
   return (
     <>
       <div className="min-h-full p-6 max-w-screen-2xl mx-auto">
-        <header className="flex flex-wrap items-start justify-between gap-4 mb-8">
+        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div className="flex items-center gap-3">
             <div>
               <h1 className="text-2xl font-bold flex items-center gap-2">

@@ -85,7 +85,7 @@ export function InboxPanel() {
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
         {/* Expanded list */}
         {expanded && (
-          <div className="w-80 max-h-96 overflow-y-auto flex flex-col gap-2 p-3 rounded-xl bg-slate-900/95 border border-slate-700/60 shadow-2xl backdrop-blur">
+          <div className="w-full sm:w-80 max-h-96 overflow-y-auto flex flex-col gap-2 p-3 rounded-t-xl sm:rounded-xl bg-slate-900/95 border border-slate-700/60 shadow-2xl backdrop-blur sm:bottom-14 bottom-20">{/* Panel header */}
             {/* Panel header */}
             <div className="flex items-center justify-between pb-2 border-b border-slate-700/50">
               <span className="text-sm font-semibold text-slate-200">Inbox</span>
@@ -103,7 +103,7 @@ export function InboxPanel() {
             ) : (
               /* Entries — newest last so newest appear at bottom */
               <div className="flex flex-col gap-2">
-                {[...inbox].map((entry, i) => {
+                {[...inbox].reverse().map((entry, i) => {
                   if (!entry || !entry.ts) return null;
                   const key = `${entry.ts}-${entry.from}-${i}`;
                   return (
