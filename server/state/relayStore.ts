@@ -22,25 +22,33 @@ class RelayStore {
   /** Daily relay counts, keyed by YYYY-MM-DD */
   private relayCounts = new Map<AgentId, Map<string, number>>();
 
-  /** Reports in flight: taskId → true while waiting to be acknowledged */
-  private pendingReports = new Set<string>();
+  /** Reports in flight: agent → Set of taskIds pending acknowledgement */
+  private pendingReports = new Map<AgentId, Set<string>>();
 
-  private todayKey(): string {
+  private  todayKey(): string {
     return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
   }
+
 
   /**
    * Called by kanban watcher when an agent completes a task.
    * Records the relay timestamp and bumps the daily count.
    */
   onRelayFired(agentId: AgentId, taskId: string): void {
+    console.log('[relayStore] relay fired: agent=' + agentId + ' task=' + taskId);
     const now = Date.now();
     this.lastRelayAt.set(agentId, now);
     const today = this.todayKey();
     const counts = this.relayCounts.get(agentId) ?? new Map();
     counts.set(today, (counts.get(today) ?? 0) + 1);
     this.relayCounts.set(agentId, counts);
-    this.pendingReports.add(taskId);
+    // Ensure pendingReports map has a Set for this agent, then add the taskId
+    let reports = this.pendingReports.get(agentId);
+    if (!reports) {
+      reports = new Set<string>();
+      this.pendingReports.set(agentId, reports);
+    }
+    reports.add(taskId);
   }
 
   /**
@@ -48,7 +56,17 @@ class RelayStore {
    * Clears the pending flag for that task.
    */
   acknowledgeReport(taskId: string): void {
-    this.pendingReports.delete(taskId);
+    // Remove the taskId from all agents' pending sets
+    for (const [agent, reports] of this.pendingReports.entries()) {
+      if (reports.delete(taskId)) {
+        // If the set becomes empty, clean up the map entry
+        if (reports.size === 0) {
+          this.pendingReports.delete(agent);
+        }
+        // taskId is unique across agents, so we can break after deletion
+        break;
+      }
+    }
   }
 
   /** Get current relay status for an agent */
@@ -59,7 +77,7 @@ class RelayStore {
     const relayCount = counts.get(today) ?? 0;
 
     return {
-      hasPendingReport: this.pendingReports.size > 0,
+      hasPendingReport: (this.pendingReports.get(agentId)?.size ?? 0) > 0,
       lastRelayTime: lastRelayMs !== null ? new Date(lastRelayMs).toISOString() : null,
       relayCount,
     };

@@ -100,6 +100,7 @@ export async function startClaudeWatcher(opts: { replayHistory?: boolean } = {})
     const agentId = attributeAgent(row, ownerHint);
     if (!agentId) return;
     console.log(`[claude] token usage: agent=${agentId} tool=${tool ?? 'none'} session=${row.sessionId}`);
+    const tsMs = row.timestamp ? new Date(row.timestamp).getTime() : undefined;
     state.onTokenUsage(
       agentId,
       {
@@ -109,6 +110,7 @@ export async function startClaudeWatcher(opts: { replayHistory?: boolean } = {})
         cacheCreate: usage.cache_creation_input_tokens ?? 0,
       },
       tool,
+      tsMs,
     );
   };
 

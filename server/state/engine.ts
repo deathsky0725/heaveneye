@@ -238,11 +238,11 @@ class StateEngine {
     if (!AGENTS[id]) return;
     const cur = this.agents.get(id);
     if (cur?.status === 'blocked') {
-      this.patch(id, { currentBoard: undefined, blockReason: undefined });
+      this.patch(id, { currentBoard: undefined, currentTask: undefined, blockReason: undefined });
       this.setStatus(id, 'idle');
       return;
     }
-    this.patch(id, { currentBoard: undefined });
+    this.patch(id, { currentBoard: undefined, currentTask: undefined });
   }
 
   onKanbanUnblocked(id: AgentId) {
@@ -340,13 +340,13 @@ class StateEngine {
   }
 
   // === Claude transcript events ===
-  onTokenUsage(id: AgentId, usage: TokenUsage, tool?: string) {
+  onTokenUsage(id: AgentId, usage: TokenUsage, tool?: string, tsMs?: number) {
     if (!AGENTS[id]) return;
     const cur = this.agents.get(id)!;
 
     // Record rolling window events (5h + 24h)
     const model = cur.currentModel ?? 'unknown';
-    const entry = { ts: Date.now(), model, usage };
+    const entry = { ts: tsMs ?? Date.now(), model, usage };
 
     // 5h window
     const events5h = this.tokenEvents.get(id) ?? [];
@@ -403,6 +403,17 @@ class StateEngine {
 
   // === Kanban event feed ===
   onKanbanEvent(entry: Omit<KanbanEventEntry, 'id'>) {
+    // Deduplication: if the last buffered event has the same task_id, kind, and ts within 5 seconds, ignore it.
+    // ts is ISO string (e.g. "2026-05-19T13:30:30.123Z") — must convert to ms via Date.parse().
+    const last = this.kanbanBuffer[this.kanbanBuffer.length - 1];
+    if (last && last.task_id === entry.task_id && last.kind === entry.kind) {
+      const lastMs = new Date(last.ts).getTime();
+      const entryMs = new Date(entry.ts).getTime();
+      if (Number.isFinite(lastMs) && Number.isFinite(entryMs) && Math.abs(entryMs - lastMs) <= 5000) {
+        // Duplicate within 5 seconds – skip adding.
+        return;
+      }
+    }
     const e: KanbanEventEntry = { ...entry, id: ++this.eventIdCounter };
     if (this.kanbanBuffer.length >= StateEngine.KANBAN_BUFFER_CAPACITY) {
       this.kanbanBuffer.shift();
@@ -534,7 +545,16 @@ class StateEngine {
     // Sort newest first
     raw.sort((a, b) => b.ts - a.ts);
 
-    return raw.slice(0, limit).map((e) => ({ ...e.entry, ts: new Date(e.ts).toISOString() }));
+    return raw.slice(0, limit).map((e) => ({ ...e.entry, ts: new Date(e.ts).toISOString() })) as Array<{
+      ts: string;
+      type: 'session_start' | 'session_end' | 'kanban_event' | 'token_usage';
+      session_id?: string;
+      session_tokens?: number;
+      session_events?: number;
+      kanban_event?: KanbanEventEntry;
+      tokens?: { model: string; input: number; output: number; cacheRead: number; cacheCreate: number };
+      tool_name?: string;
+    }>;
   }
 
   /** Lightweight tool count tracking (populated by onHermesToolUse) */

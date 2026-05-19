@@ -75,12 +75,13 @@ function handleEvent(ev: HermesHookEvent) {
       const agent = resolveAgent(ev);
       if (!agent) return;
       const t = ev.tokens ?? {};
+      const tsMs = ev.ts ? new Date(ev.ts).getTime() : undefined;
       state.onTokenUsage(agent, {
         input:       t.input       ?? 0,
         output:      t.output      ?? 0,
         cacheRead:   t.cache_read  ?? 0,
         cacheCreate: t.cache_create ?? 0,
-      });
+      }, undefined, tsMs);
       return;
     }
     case 'session_end': {

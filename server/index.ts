@@ -170,7 +170,7 @@ if (process.env.HEAVENEYE_MOCK === '1') {
   ];
   let i = 0;
   setInterval(() => {
-    scenes[i % scenes.length]();
+    scenes[i % scenes.length]?.();
     for (const id of AGENT_IDS) {
       state.onTokenUsage(id, {
         input: Math.floor(Math.random() * 200),

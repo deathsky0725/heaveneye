@@ -76,7 +76,7 @@ export function InboxPanel() {
   const markInboxFlashShown = useStore((s) => s.markInboxFlashShown);
   const [expanded, setExpanded] = useState(false);
 
-  const filteredInbox = inbox.filter(e => e.from !== 'ji-ziyue' && e.event !== 'inbox_init');
+  const filteredInbox = inbox.filter(e => e.from !== 'ji-ziyue' && e.event !== 'inbox_init' && e.event !== 'completion');
   const unreadCount = filteredInbox.length;
   const hasUnread = unreadCount > 0;
 

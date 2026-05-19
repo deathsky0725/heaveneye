@@ -107,8 +107,18 @@ export function TaskFeedSidebar() {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [filter, setFilter] = useState<Filter>('all');
   const [pendingCount, setPendingCount] = useState(0);
+  const [lastSeenTs, setLastSeenTs] = useState<string>(() => {
+    return localStorage.getItem('feedLastSeenTs') ?? new Date(0).toISOString();
+  });
   const listRef = useRef<HTMLDivElement>(null);
   const isAtTopRef = useRef(true);
+
+  // Mark all as read when user opens the feed
+  const markAllRead = () => {
+    const now = new Date().toISOString();
+    localStorage.setItem('feedLastSeenTs', now);
+    setLastSeenTs(now);
+  };
 
   // Auto-scroll to top when new events arrive (only if user hasn't scrolled up)
   useEffect(() => {
@@ -147,7 +157,12 @@ export function TaskFeedSidebar() {
     return true;
   });
 
-  const unreadCount = events.length;
+  const unreadCount = events.filter((ev) => ev.ts > lastSeenTs).length;
+
+  // Auto-mark as read when feed is expanded
+  useEffect(() => {
+    if (expanded && unreadCount > 0) markAllRead();
+  }, [expanded]);
 
   return (
     <>
