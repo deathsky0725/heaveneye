@@ -129,6 +129,23 @@ app.post('/api/agent/:id/kill', async (c) => {
   return c.json({ killed: true, pid, signal });
 });
 
+app.get('/api/agent/:id/detail', (c) => {
+  const id = c.req.param('id') as AgentId;
+  if (!AGENT_IDS.includes(id)) {
+    return c.json({ error: 'invalid agent id' }, 400);
+  }
+  return c.json(state.getAgentDetail(id));
+});
+
+app.get('/api/agent/:id/timeline', (c) => {
+  const id = c.req.param('id') as AgentId;
+  if (!AGENT_IDS.includes(id)) {
+    return c.json({ error: 'invalid agent id' }, 400);
+  }
+  const limit = Math.min(Number(c.req.query('limit') ?? 30), 100);
+  return c.json({ agent: id, timeline: state.getAgentTimeline(id, limit) });
+});
+
 // ---- Mock data driver (only when HEAVENEYE_MOCK=1) ----
 if (process.env.HEAVENEYE_MOCK === '1') {
   console.log('[heaveneye] MOCK MODE enabled — no real data sources');

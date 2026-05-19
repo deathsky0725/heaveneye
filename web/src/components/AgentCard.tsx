@@ -26,11 +26,14 @@ const STATUS_DOT: Record<AgentStatus, string> = {
 
 export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; compact?: boolean }) {
   const [showHistory, setShowHistory] = useState(false);
+  const openDetailPanel = useStore((s) => s.openDetailPanel);
+  const mockDots = ['tool','tool','task','tool','session','task','tool','tool'];
   return (
     <div
       data-agent-id={agent.id}
-      className={`rounded-2xl backdrop-blur-sm bg-white/5 border border-white/10 hover:border-white/20 transition ${agent.status === 'blocked' ? 'border-l-4 border-amber-400' : ''} ${compact ? 'p-3' : 'p-5'}`}
+      className={`rounded-2xl backdrop-blur-sm bg-white/5 border border-white/10 hover:border-white/20 transition cursor-pointer ${agent.status === 'blocked' ? 'border-l-4 border-amber-400' : ''} ${compact ? 'p-3' : 'p-5'}`}
       style={{ boxShadow: agent.status !== 'idle' ? `0 0 24px -8px ${agent.color}` : undefined }}
+      onClick={() => openDetailPanel(agent.id)}
     >
       <div className="flex items-start gap-3">
         <RiveAvatar id={agent.id} status={agent.status} color={agent.color} size={compact ? 'sm' : 'md'} />
@@ -46,6 +49,15 @@ export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; co
             )}
           </p>
 
+          <div className="flex gap-0.5 mt-2">
+            {mockDots.map((dot, idx) => (
+              <span
+                key={idx}
+                className={`w-1.5 h-1.5 rounded-full ${dot === "tool" ? "bg-blue-400" : dot === "task" ? "bg-green-400" : dot === "session" ? "bg-slate-400" : "bg-rose-400"}`}
+                title={dot}
+              />
+            ))}
+          </div>
           <div className="mt-2 flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${STATUS_DOT[agent.status]}`} />
             <span className="text-sm text-slate-200">{STATUS_LABEL[agent.status]}</span>
@@ -55,14 +67,18 @@ export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; co
           {(agent.status === 'working' || agent.status === 'thinking') && (() => {
             const alert = alertDuration(agent.lastEventAt);
             return alert.tier !== 'hidden' ? (
-              <div className={`mt-2 flex items-center justify-between rounded-lg px-3 py-2 ${alert.tier === 'alert' ? 'bg-amber-400/10 border border-amber-400/20' : alert.tier === 'stall' ? 'bg-orange-400/10 border border-orange-400/20' : 'bg-rose-500/10 border border-rose-500/20 animate-pulse'}`}>
+              <div
+                className={`mt-2 flex items-center justify-between rounded-lg px-3 py-2 ${alert.tier === 'alert' ? 'bg-amber-400/10 border border-amber-400/20' : alert.tier === 'stall' ? 'bg-orange-400/10 border border-orange-400/20' : 'bg-rose-500/10 border border-rose-500/20 animate-pulse'}`}
+                onClick={(e) => e.stopPropagation()}
+              >
                 <span className={`text-xs font-medium ${ALERT_COLOR[alert.tier]}`}>
                   {alert.text}
                 </span>
                 {(alert.tier === 'stall' || alert.tier === 'stuck') && (
                   <button
                     data-testid={`kill-btn-${agent.id}`}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (confirm(`Kill ${agent.name} worker?`)) {
                         useStore.getState().killAgent(agent.id);
                       }
@@ -111,7 +127,10 @@ export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; co
       <div className="mt-2 flex items-center justify-between">
         <TokenBadge usage={agent.tokensToday} />
         <button
-          onClick={() => setShowHistory((v) => !v)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowHistory((v) => !v);
+          }}
           className="text-xs text-slate-400 hover:text-slate-200 transition-colors ml-2"
         >
           📊 history

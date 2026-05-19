@@ -7,6 +7,7 @@ import { InboxPanel } from './components/InboxPanel';
 import { TaskFeedSidebar } from './components/TaskFeedSidebar';
 import { SystemHealth } from './components/SystemHealth';
 import { DiscordPanel } from './components/DiscordPanel';
+import { DetailPanel } from './components/DetailPanel';
 import type { AgentId, AgentSnapshot } from './types';
 
 export default function App() {
@@ -78,6 +79,7 @@ export default function App() {
       </div>
       <InboxPanel />
       <TaskFeedSidebar />
+      <DetailPanel />
     </>
   );
 }

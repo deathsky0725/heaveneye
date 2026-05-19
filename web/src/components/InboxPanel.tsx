@@ -76,7 +76,8 @@ export function InboxPanel() {
   const markInboxFlashShown = useStore((s) => s.markInboxFlashShown);
   const [expanded, setExpanded] = useState(false);
 
-  const unreadCount = inbox.length;
+  const filteredInbox = inbox.filter(e => e.from !== 'ji-ziyue' && e.event !== 'inbox_init');
+  const unreadCount = filteredInbox.length;
   const hasUnread = unreadCount > 0;
 
   return (
@@ -95,7 +96,7 @@ export function InboxPanel() {
             </div>
 
             {/* Empty state */}
-            {inbox.length === 0 ? (
+            {filteredInbox.length === 0 ? (
               <div className="flex flex-col items-center py-6 text-slate-500">
                 <span className="text-2xl mb-1">✓</span>
                 <span className="text-sm">Inbox clear</span>
@@ -103,7 +104,7 @@ export function InboxPanel() {
             ) : (
               /* Entries — newest last so newest appear at bottom */
               <div className="flex flex-col gap-2">
-                {[...inbox].reverse().map((entry, i) => {
+                {[...filteredInbox].reverse().map((entry, i) => {
                   if (!entry || !entry.ts) return null;
                   const key = `${entry.ts}-${entry.from}-${i}`;
                   return (

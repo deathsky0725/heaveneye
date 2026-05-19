@@ -12,6 +12,14 @@ interface TokenEvent {
   usage: TokenUsage;
 }
 
+interface SessionEntry {
+  sessionId: string;
+  startTs: number;   // Unix ms
+  endTs: number | null; // null = still active
+  totalEvents: number;
+  totalTokens: number;
+}
+
 function blankSnapshot(id: AgentId): AgentSnapshot {
   const p = AGENTS[id];
   return {
@@ -46,6 +54,14 @@ class StateEngine {
   private tokenEvents24h = new Map<AgentId, TokenEvent[]>();
   private static readonly WINDOW24H_MS = 24 * 60 * 60 * 1000;
 
+  /** Active + recent sessions per agent */
+  private sessions = new Map<AgentId, SessionEntry[]>();
+  private static readonly MAX_SESSIONS = 10;
+
+  private currentSessionId = new Map<AgentId, string>();
+
+  private static readonly TOOL_WINDOW_MS = 24 * 60 * 60 * 1000;
+
   constructor() {
     for (const id of AGENT_IDS) this.agents.set(id, blankSnapshot(id));
     setInterval(() => { this.sweepIdle(); this.pruneWindows(); }, 5_000);
@@ -73,6 +89,12 @@ class StateEngine {
       // 24h window
       const events24h = this.tokenEvents24h.get(id) ?? [];
       this.tokenEvents24h.set(id, events24h.filter((e) => e.ts > cutoff24h));
+      // Prune sessions: remove ended sessions beyond MAX_SESSIONS, keep active ones
+      const sessions = this.sessions.get(id) ?? [];
+      const cutoffSession = Date.now() - (StateEngine.WINDOW24H_MS * 2);
+      this.sessions.set(id, sessions.filter(
+        (s) => s.endTs === null || s.endTs > cutoffSession
+      ).slice(-StateEngine.MAX_SESSIONS));
     }
   }
 
@@ -250,22 +272,24 @@ class StateEngine {
       currentModel: info.model,
     });
     this.setStatus(id, 'thinking');
-  }
-
-  onHermesToolUse(id: AgentId, toolName: string) {
-    if (!AGENTS[id]) return;
-    this.patch(id, { lastTool: toolName });
-    this.lastTokenAt.set(id, Date.now());
-    const cur = this.agents.get(id)!;
-    if (cur.status === 'idle' || cur.status === 'thinking' || cur.status === 'done') {
-      this.setStatus(id, 'working');
-    }
+    // Create session entry
+    const sessions = this.sessions.get(id) ?? [];
+    sessions.push({ sessionId: info.sessionId, startTs: Date.now(), endTs: null, totalEvents: 0, totalTokens: 0 });
+    this.sessions.set(id, sessions);
+    this.currentSessionId.set(id, info.sessionId);
   }
 
   onHermesSessionEnd(id: AgentId, _sessionId: string) {
     if (!AGENTS[id]) return;
     this.patch(id, { currentModel: AGENTS[id].defaultModel });
     this.setStatus(id, 'done');
+    const sid = this.currentSessionId.get(id);
+    if (sid) {
+      const sessions = this.sessions.get(id) ?? [];
+      const entry = sessions.find((s) => s.sessionId === sid);
+      if (entry) entry.endTs = Date.now();
+      this.currentSessionId.delete(id);
+    }
   }
 
   // === Hermes status.jsonl events (legacy / supplementary) ===
@@ -333,6 +357,16 @@ class StateEngine {
     const events24h = this.tokenEvents24h.get(id) ?? [];
     events24h.push(entry);
     this.tokenEvents24h.set(id, events24h);
+
+    // Accumulate tokens on current session
+    const sid = this.currentSessionId.get(id);
+    if (sid) {
+      const sessions = this.sessions.get(id) ?? [];
+      const sentry = sessions.find((s) => s.sessionId === sid);
+      if (sentry) {
+        sentry.totalTokens += (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheCreate ?? 0);
+      }
+    }
 
     const t = cur.tokensToday;
     const merged: TokenUsage = {
@@ -411,6 +445,120 @@ class StateEngine {
 
   getSystemHealth(): import('../state/types.js').SystemHealth | null {
     return this.latestHealth;
+  }
+
+  // === Agent detail for side panel ===
+  getAgentDetail(agentId: AgentId) {
+    if (!AGENTS[agentId]) return null;
+
+    // sessionTimeline: up to 10 recent sessions (ended or active)
+    const sessions = this.sessions.get(agentId) ?? [];
+    const sessionTimeline = sessions
+      .slice(-StateEngine.MAX_SESSIONS)
+      .map((s) => ({
+        session_id: s.sessionId,
+        start_ts: s.startTs,
+        end_ts: s.endTs,
+        total_events: s.totalEvents,
+        total_tokens: s.totalTokens,
+      }));
+
+    // currentSession: active session (endTs === null)
+    const active = sessions.find((s) => s.endTs === null) ?? null;
+    const currentSession = active
+      ? {
+          session_id: active.sessionId,
+          started_at: active.startTs,
+          events_count: active.totalEvents,
+          tokens_so_far: active.totalTokens,
+        }
+      : null;
+
+    // toolBreakdown: from agentToolCounts (populated by onHermesToolUse calls in last 24h)
+    const toolBreakdown = this.agentToolCounts.get(agentId)
+      ? Array.from(this.agentToolCounts.get(agentId)!.entries()).map(([tool, count]) => ({ tool, count }))
+      : [];
+
+    return { toolBreakdown, sessionTimeline, currentSession };
+  }
+
+  /**
+   * Agent timeline: merges session events, kanban events, and token usage
+   * into a single chronological list (newest first).
+   */
+  getAgentTimeline(agentId: AgentId, limit = 30): Array<{
+    ts: string;
+    type: 'session_start' | 'session_end' | 'kanban_event' | 'token_usage';
+    session_id?: string;
+    session_tokens?: number;
+    session_events?: number;
+    kanban_event?: KanbanEventEntry;
+    tokens?: { model: string; input: number; output: number; cacheRead: number; cacheCreate: number };
+    tool_name?: string;
+  }> {
+    if (!AGENTS[agentId]) return [];
+
+    const raw: Array<{ ts: number; entry: Omit<any, 'ts'> }> = [];
+
+    // Session start/end events
+    const sessions = this.sessions.get(agentId) ?? [];
+    for (const s of sessions) {
+      raw.push({
+        ts: s.startTs,
+        entry: { type: 'session_start', session_id: s.sessionId, session_tokens: s.totalTokens, session_events: s.totalEvents },
+      });
+      if (s.endTs) {
+        raw.push({
+          ts: s.endTs,
+          entry: { type: 'session_end', session_id: s.sessionId, session_tokens: s.totalTokens, session_events: s.totalEvents },
+        });
+      }
+    }
+
+    // Kanban events for this agent
+    for (const ev of this.kanbanBuffer) {
+      if (ev.agent === agentId) {
+        raw.push({ ts: new Date(ev.ts).getTime(), entry: { type: 'kanban_event', kanban_event: ev } });
+      }
+    }
+
+    // Token usage events (24h window)
+    const tokenEvents = this.tokenEvents24h.get(agentId) ?? [];
+    for (const te of tokenEvents) {
+      raw.push({
+        ts: te.ts,
+        entry: { type: 'token_usage', tokens: { model: te.model, input: te.usage.input, output: te.usage.output, cacheRead: te.usage.cacheRead, cacheCreate: te.usage.cacheCreate } },
+      });
+    }
+
+    // Sort newest first
+    raw.sort((a, b) => b.ts - a.ts);
+
+    return raw.slice(0, limit).map((e) => ({ ...e.entry, ts: new Date(e.ts).toISOString() }));
+  }
+
+  /** Lightweight tool count tracking (populated by onHermesToolUse) */
+  private agentToolCounts = new Map<AgentId, Map<string, number>>();
+
+  onHermesToolUse(id: AgentId, toolName: string) {
+    if (!AGENTS[id]) return;
+    this.patch(id, { lastTool: toolName });
+    this.lastTokenAt.set(id, Date.now());
+    const cur = this.agents.get(id)!;
+    if (cur.status === 'idle' || cur.status === 'thinking' || cur.status === 'done') {
+      this.setStatus(id, 'working');
+    }
+    // Increment event count on current session
+    const sid = this.currentSessionId.get(id);
+    if (sid) {
+      const sessions = this.sessions.get(id) ?? [];
+      const entry = sessions.find((s) => s.sessionId === sid);
+      if (entry) entry.totalEvents += 1;
+    }
+    // Track tool counts for breakdown
+    const counts = this.agentToolCounts.get(id) ?? new Map();
+    counts.set(toolName, (counts.get(toolName) ?? 0) + 1);
+    this.agentToolCounts.set(id, counts);
   }
 }
 

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AgentSnapshot, ServerEvent, Usage5hEntry, InboxEntry, KanbanEventEntry, SystemHealth, NotificationEntry } from './types';
+import type { AgentId, AgentSnapshot, ServerEvent, Usage5hEntry, InboxEntry, KanbanEventEntry, SystemHealth, NotificationEntry } from './types';
 
 interface State {
   agents: AgentSnapshot[];
@@ -12,12 +12,15 @@ interface State {
   notifications: NotificationEntry[];
   killError: string | null;
   killSuccess: string | null;
+  detailPanelId: AgentId | null;
   apply: (ev: ServerEvent) => void;
   setConnected: (v: boolean) => void;
   setUsage5h: (v: Usage5hEntry[]) => void;
   markInboxFlashShown: () => void;
   killAgent: (id: string) => Promise<{ killed: boolean; pid: number | null; signal: string }>;
   clearKillFeedback: () => void;
+  openDetailPanel: (id: AgentId) => void;
+  closeDetailPanel: () => void;
 }
 
 export const useStore = create<State>((set) => ({
@@ -31,10 +34,13 @@ export const useStore = create<State>((set) => ({
   notifications: [],
   killError: null,
   killSuccess: null,
+  detailPanelId: null,
   setConnected: (v) => set({ connected: v }),
   setUsage5h: (v) => set({ usage5h: v }),
   markInboxFlashShown: () => set({ inboxFlash: null }),
   clearKillFeedback: () => set({ killError: null, killSuccess: null }),
+  openDetailPanel: (id) => set({ detailPanelId: id }),
+  closeDetailPanel: () => set({ detailPanelId: null }),
   killAgent: async (id) => {
     const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
     try {
