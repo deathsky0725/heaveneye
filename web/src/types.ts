@@ -100,3 +100,9 @@ export interface NotificationEntry {
   agent: AgentId;
   message: string;
 }
+
+export interface RelayStatus {
+  hasPendingReport: boolean;
+  lastRelayTime: string | null;
+  relayCount: number;
+}

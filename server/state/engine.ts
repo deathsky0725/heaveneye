@@ -265,31 +265,31 @@ class StateEngine {
   }
 
   // === Hermes hook events (heaveneye-events.jsonl) ===
-  onHermesSessionStart(id: AgentId, info: { sessionId: string; taskId?: string; model?: string }) {
+  onHermesSessionStart(id: AgentId, info: { sessionId: string; taskId?: string; model?: string; ts?: string }) {
     if (!AGENTS[id]) return;
     this.patch(id, {
       currentTask: info.taskId ? { id: info.taskId } : undefined,
       currentModel: info.model,
     });
     this.setStatus(id, 'thinking');
-    // Create session entry
+    // Create session entry — use event timestamp from watcher, fallback to Date.now()
     const sessions = this.sessions.get(id) ?? [];
-    sessions.push({ sessionId: info.sessionId, startTs: Date.now(), endTs: null, totalEvents: 0, totalTokens: 0 });
+    const startTs = info.ts ? new Date(info.ts).getTime() : Date.now();
+    sessions.push({ sessionId: info.sessionId, startTs, endTs: null, totalEvents: 0, totalTokens: 0 });
     this.sessions.set(id, sessions);
     this.currentSessionId.set(id, info.sessionId);
   }
 
-  onHermesSessionEnd(id: AgentId, _sessionId: string) {
+  onHermesSessionEnd(id: AgentId, _sessionId: string, ts?: string) {
     if (!AGENTS[id]) return;
     this.patch(id, { currentModel: AGENTS[id].defaultModel });
     this.setStatus(id, 'done');
-    const sid = this.currentSessionId.get(id);
-    if (sid) {
-      const sessions = this.sessions.get(id) ?? [];
-      const entry = sessions.find((s) => s.sessionId === sid);
-      if (entry) entry.endTs = Date.now();
-      this.currentSessionId.delete(id);
+    const sessions = this.sessions.get(id) ?? [];
+    const entry = sessions.find((s) => s.sessionId === _sessionId);
+    if (entry) {
+      entry.endTs = ts ? new Date(ts).getTime() : Date.now();
     }
+    this.currentSessionId.delete(id);
   }
 
   // === Hermes status.jsonl events (legacy / supplementary) ===

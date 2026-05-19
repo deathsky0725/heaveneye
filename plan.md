@@ -188,7 +188,6 @@ Projects/heaveneye/
   - หรือ trigger จื่อเยว่ CLI prompt อัตโนมัติ ("task X blocked — please review") เพื่อสร้าง feedback loop จริงตอน user ไม่อยู่หน้า dashboard
   - เป้าหมาย: ระบบ self-heal — user ไม่ต้องโผล่หน้าจอเองจะรู้ทุกครั้งที่ทีมต้องการความช่วยเหลือ
 - [ ] **Token tracking สำหรับ kanban-worker sessions** — ตอนนี้ workers ไม่ fire hook → token ไม่เข้า dashboard. ทางเลือก: อ่าน session JSON (`~/.hermes/profiles/<name>/sessions/*.json`) หรือ patch Hermes ให้ fire hook
-- [ ] **Re-render task ของ jianfeng (EP001 t_77a9f59a)** — blocked เพราะ iteration budget 90/90 หมด ต้อง decompose เป็น sub-step เล็กลง (tone map / concat / render แยก task) ก่อน retry
 - [ ] Custom Rive asset เฉพาะตัวให้แต่ละ persona
 - [ ] Sound effect (เบาๆ ตอน complete)
 - [ ] Dark/light mode

@@ -70,8 +70,16 @@ export function StatChart({ agentId, compact = false }: { agentId: AgentId; comp
 
   const getBarHeight = (total: number) => Math.max(2, (total / maxTotal) * CHART_H);
 
-  // X-axis label positions — every 6h (normal), every 12h (compact)
-  const labelHours = compact ? [0, 12] : [0, 6, 12, 18];
+  // X-axis labels — relative to rolling 24h window
+  // buckets[0] = "-24h" (oldest), buckets[12] = "-12h" (mid), buckets[23] = "now" (newest)
+  // Option B: use actual hour strings from data
+  const getLabel = (i: number) => {
+    const b = buckets[i];
+    if (!b) return '';
+    const h = new Date(b.hour).getHours();
+    return `${String(h).padStart(2, '0')}:00`;
+  };
+  const labelIndices = [0, 6, 12, 18, 23];
 
   return (
     <div className="mt-3 relative">
@@ -114,19 +122,18 @@ export function StatChart({ agentId, compact = false }: { agentId: AgentId; comp
         })}
 
         {/* X-axis labels */}
-        {labelHours.map((h) => {
-          const idx = buckets.findIndex((_, i) => new Date(buckets[i].hour).getHours() >= h);
-          const x = idx >= 0 ? PAD_L + idx * barW + barW / 2 : 0;
+        {labelIndices.map((i) => {
+          const x = PAD_L + i * barW + barW / 2;
           return (
             <text
-              key={h}
+              key={i}
               x={x}
               y={H - 4}
               textAnchor="middle"
               fontSize={10}
               fill="#64748b"
             >
-              {String(h).padStart(2, '0')}:00
+              {getLabel(i)}
             </text>
           );
         })}
@@ -135,7 +142,7 @@ export function StatChart({ agentId, compact = false }: { agentId: AgentId; comp
       {/* Tooltip */}
       {tooltip && (
         <div
-          className="absolute z-50 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-xs pointer-events-none shadow-xl"
+          className="absolute z-50 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-xs pointer-events-none shadow-xl max-w-[200px]"
           style={{
             left: tooltip.x,
             top: tooltip.y - 8,

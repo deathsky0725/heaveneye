@@ -4,6 +4,7 @@ import { cors } from 'hono/cors';
 import { spawn } from 'node:child_process';
 import { PORT, AGENT_IDS, AGENTS, type AgentId } from './config.ts';
 import { state } from './state/engine.ts';
+import { relayStore } from './state/relayStore.ts';
 import type { ServerEvent } from './state/types.ts';
 import { startHermesWatcher } from './watchers/hermes.ts';
 import { startHermesEventWatcher } from './watchers/hermes-events.ts';
@@ -11,6 +12,7 @@ import { startClaudeWatcher } from './watchers/claude.ts';
 import { startKanbanWatcher } from './watchers/kanban.ts';
 import { startInboxWatcher } from './watchers/inbox.ts';
 import { startSystemHealthWatcher } from './watchers/system-health.ts';
+import { startRelayCron } from './watchers/relayCron.ts';
 import { INBOX_PATH } from './config.ts';
 
 const app = new Hono();
@@ -146,6 +148,14 @@ app.get('/api/agent/:id/timeline', (c) => {
   return c.json({ agent: id, timeline: state.getAgentTimeline(id, limit) });
 });
 
+app.get('/api/agent/:id/relay-status', (c) => {
+  const id = c.req.param('id') as AgentId;
+  if (!AGENT_IDS.includes(id)) {
+    return c.json({ error: 'invalid agent id' }, 400);
+  }
+  return c.json({ agent: id, ...relayStore.getStatus(id) });
+});
+
 // ---- Mock data driver (only when HEAVENEYE_MOCK=1) ----
 if (process.env.HEAVENEYE_MOCK === '1') {
   console.log('[heaveneye] MOCK MODE enabled — no real data sources');
@@ -181,6 +191,7 @@ if (process.env.HEAVENEYE_MOCK === '1') {
   startKanbanWatcher({ replayHistory: replay }).catch(console.warn);
   startInboxWatcher({ replayHistory: replay }).catch(console.warn);
   startSystemHealthWatcher().catch(console.warn);
+  startRelayCron().catch(console.warn);
   console.log('[heaveneye] Watchers started (async)');
 }
 

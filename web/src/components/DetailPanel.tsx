@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { AgentId, AgentSnapshot, AgentStatus } from '../types';
+import type { AgentId, AgentSnapshot, AgentStatus, NotificationEntry, RelayStatus } from '../types';
 import { useStore } from '../store';
 import { StatChart } from './StatChart';
 import { RiveAvatar } from './RiveAvatar';
@@ -67,6 +67,8 @@ export function DetailPanel() {
   const openDetailPanel = useStore((s) => s.openDetailPanel);
 
   const [data, setData] = useState<DetailData | null>(null);
+  const [relayStatus, setRelayStatus] = useState<RelayStatus | null>(null);
+  const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -83,15 +85,27 @@ export function DetailPanel() {
   useEffect(() => {
     if (!detailPanelId) {
       setData(null);
+      setRelayStatus(null);
+      setNotifications([]);
       return;
     }
     setLoading(true);
     setData(null);
+    setRelayStatus(null);
+    setNotifications([]);
     const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
     fetch(`${base}/api/agent/${detailPanelId}/detail`)
       .then((r) => r.json())
       .then((d: DetailData) => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
+    fetch(`${base}/api/agent/${detailPanelId}/relay-status`)
+      .then((r) => r.json())
+      .then((d: RelayStatus) => setRelayStatus(d))
+      .catch(() => {});
+    fetch(`${base}/api/notifications?limit=5`)
+      .then((r) => r.json())
+      .then((entries: NotificationEntry[]) => setNotifications(entries.filter((n) => n.agent === detailPanelId)))
+      .catch(() => {});
   }, [detailPanelId]);
 
   // Click outside to close
@@ -205,7 +219,7 @@ export function DetailPanel() {
               </div>
 
               {/* Section 3: Current session */}
-              <div className="px-5 py-4">
+              <div className="px-5 py-4 border-b border-white/5">
                 <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">Current session</h3>
                 {data.currentSession ? (
                   <div className="space-y-1.5 text-xs">
@@ -230,6 +244,60 @@ export function DetailPanel() {
                   <p className="text-xs text-slate-600">ไม่มี session ที่กำลังทำงาน</p>
                 )}
               </div>
+
+              {/* Section 4: Notification Log */}
+              <div className="px-5 py-4">
+                <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">Notification Log</h3>
+                {notifications.length === 0 ? (
+                  <p className="text-xs text-slate-600">ไม่มี notification</p>
+                ) : (
+                  <div className="space-y-2">
+                    {notifications.map((n) => (
+                      <div key={n.id} className="flex items-start gap-2 text-xs">
+                        <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 mt-1" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-slate-300 truncate">
+                              {n.task_title ?? n.task_id}
+                            </span>
+                            <span className="text-slate-500 shrink-0">{relativeTime(n.ts)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 text-slate-500">
+                            <span className="truncate">→ {n.chat_id}</span>
+                            <span className="text-slate-600">·</span>
+                            <span className="text-indigo-400">{n.event_kind}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 5: Relay / HM2 Report Status */}
+              {relayStatus && (
+                <div className="px-5 py-4">
+                  <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">Relay / HM2 Report</h3>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">pending report</span>
+                      <span className={relayStatus.hasPendingReport ? 'text-amber-400' : 'text-emerald-400'}>
+                        {relayStatus.hasPendingReport ? '● รอส่ง' : '✓ ไม่มี'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">last relay</span>
+                      <span className="text-slate-300">
+                        {relayStatus.lastRelayTime ? relativeTime(relayStatus.lastRelayTime) : '—'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">relay วันนี้</span>
+                      <span className="text-slate-300">{relayStatus.relayCount}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>

@@ -19,6 +19,9 @@ import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { HOME, AGENTS, type AgentId } from '../config.ts';
 import { state } from '../state/engine.ts';
+import { appendResultMdEntry, type ResultMdEntry } from './resultMdUpdater.ts';
+import { notifyCompleted } from '../lib/discordNotifier.ts';
+import { relayStore } from '../state/relayStore.ts';
 
 const BOARDS_ROOT = join(HOME, '.hermes/kanban/boards');
 const POLL_INTERVAL_MS = 1_000;
@@ -87,6 +90,10 @@ function handleEvent(row: KanbanEventRow, boardSlug: string, db: Database): void
       state.onKanbanIdle(agent);
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'completed', task_id: row.task_id, task_title: taskTitle, payload });
       dispatchNotification(db, row.task_id, taskTitle, 'completed', agent);
+      relayStore.onRelayFired(agent, row.task_id);
+      appendResultMdEntry({ timestamp: new Date().toISOString(), agent, event: 'completed', taskId: row.task_id, taskTitle, boardSlug });
+      const agentName = AGENTS[agent]?.name ?? agent;
+      notifyCompleted({ taskId: row.task_id, taskTitle, agentName });
       return;
 
     case 'crashed':
@@ -95,6 +102,7 @@ function handleEvent(row: KanbanEventRow, boardSlug: string, db: Database): void
       state.onKanbanIdle(agent);
       state.onHermesEvent({ agent, task_id: row.task_id, event: 'failed', payload });
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'blocked', task_id: row.task_id, task_title: taskTitle, payload: { reason: row.kind } });
+      appendResultMdEntry({ timestamp: new Date().toISOString(), agent, event: row.kind as string, taskId: row.task_id, taskTitle, boardSlug });
       return;
 
     case 'blocked': {
@@ -107,20 +115,23 @@ function handleEvent(row: KanbanEventRow, boardSlug: string, db: Database): void
           WHERE task_id = ? AND author = ?
           ORDER BY id DESC LIMIT 1
         `).all(row.task_id, agent) as { body: string }[];
-        if (rows.length > 0 && rows[0].body) {
-          const body = rows[0].body.trim();
+        const firstRow = rows[0];
+        if (firstRow && firstRow.body) {
+          const body = firstRow.body.trim();
           reason = body.length > 120 ? body.slice(0, 120) + '…' : body;
         }
       }
       if (!reason) reason = 'blocked';
       state.onKanbanBlocked(agent, reason, row.task_id, taskTitle, boardSlug);
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'blocked', task_id: row.task_id, task_title: taskTitle, payload: { reason, ...payload } });
+      appendResultMdEntry({ timestamp: new Date().toISOString(), agent, event: 'blocked', taskId: row.task_id, taskTitle, boardSlug, extra: reason });
       return;
     }
 
     case 'unblocked':
       state.onKanbanUnblocked(agent);
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'unblocked', task_id: row.task_id, task_title: taskTitle, payload });
+      appendResultMdEntry({ timestamp: new Date().toISOString(), agent, event: 'unblocked', taskId: row.task_id, taskTitle, boardSlug });
       return;
   }
 }

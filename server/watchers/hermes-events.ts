@@ -61,6 +61,7 @@ function handleEvent(ev: HermesHookEvent) {
         sessionId: ev.session_id,
         taskId: ev.kanban_task ?? undefined,
         model: ev.model ?? undefined,
+        ts: ev.ts,
       });
       return;
     }
@@ -85,7 +86,7 @@ function handleEvent(ev: HermesHookEvent) {
     case 'session_end': {
       const agent = resolveAgent(ev);
       if (!agent) return;
-      state.onHermesSessionEnd(agent, ev.session_id);
+      state.onHermesSessionEnd(agent, ev.session_id, ev.ts);
       sessionProfile.delete(ev.session_id);
       return;
     }
