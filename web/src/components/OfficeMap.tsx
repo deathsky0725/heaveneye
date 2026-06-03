@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import type { AgentId, AgentSnapshot, AgentStatus } from '../types';
 import { useStore } from '../store';
 import { RiveAvatar } from './RiveAvatar';
-import { isoProject, depthZ, ISO_GRID, TILE_W, TILE_H, GRID_SIZE } from '../lib/iso';
+import { IsoDesk } from './IsoDesk';
+import { isoProject, depthZ, ISO_GRID, GRID_SIZE, AUTO_FIT } from '../lib/iso';
 
 // Status-aware speech bubble copy (พูดเองได้ ฟีลมีชีวิต)
 const SPEECH_LINES: Partial<Record<AgentStatus, string[]>> = {
@@ -24,28 +25,18 @@ interface Coords {
   y: number;
 }
 
-// Each agent's home coords come from the iso projection (B1.1).
-// On B1.2+ these will also drive desk/avatar placement; for now we keep the
-// %-based desk offset that the original code used, but anchor it at the iso
-// tile position rather than a flat percent.
-//
-// DESK_COORDS[agent] = { x: % horizontally, y: % vertically } — anchor for the
-// iso tile that the agent stands on.  Computed once from ISO_GRID.
-const DESK_COORDS: Record<AgentId, Coords> = Object.fromEntries(
+// Home coordinates for each agent — anchored at the iso-tile center.
+// Computed once from ISO_GRID. (B1.2: replaces the old flat % DESK_COORDS.)
+const HOME_COORDS: Record<AgentId, Coords> = Object.fromEntries(
   (Object.keys(ISO_GRID) as AgentId[]).map((id) => {
     const { col, row } = ISO_GRID[id];
     return [id, isoProject(col, row)];
   })
 ) as Record<AgentId, Coords>;
 
-// Floor anchor for the desk monitor — sits *on* the iso tile, just below
-// the center.  Constant offset works because the iso grid is uniformly
-// scaled.
-const DESK_FLOOR_DROP = 4; // % below tile center
-
-// Semicircular delivery offsets around Anmaioyi's desk (sibling agents gather
-// in a small semicircle while delivering).  These are in screen-%, not iso
-// coords, so they remain unchanged.
+// Semicircular delivery offsets around Anmaioyi's desk (sibling agents
+// gather in a small semicircle while delivering).  These are in screen-%,
+// not iso coords, so they remain unchanged across the iso migration.
 const DELIVERY_OFFSETS: Record<AgentId, Coords> = {
   ziyue:    { x: 0, y: 0 },
   anmaioyi: { x: 0, y: 0 },
@@ -88,6 +79,20 @@ const STATUS_PILL: Record<AgentStatus, { dot: string; pill: string }> = {
 // Core agents render larger to establish visual hierarchy
 const CORE_AGENTS = new Set<AgentId>(['ziyue', 'anmaioyi']);
 
+// B1.3 — sprite-ready character. Drop a PNG at web/public/characters/<id>.png
+// and it renders as the avatar. If the file is missing (404) the <img>'s
+// onError flips spriteOk[id] → false and we fall back to the RiveAvatar
+// emoji renderer. พี่เบญ replace sprite ได้โดยไม่ต้องแก้โค้ด.
+const CHARACTER_SPRITE: Record<AgentId, string> = {
+  ziyue:    '/characters/ziyue.png',
+  anmaioyi: '/characters/anmaioyi.png',
+  wenshu:   '/characters/wenshu.png',
+  yanxin:   '/characters/yanxin.png',
+  jianfeng: '/characters/jianfeng.png',
+  shihao:   '/characters/shihao.png',
+  yefan:    '/characters/yefan.png',
+};
+
 // Org-chart edges for connection lines (reduces empty space + shows hierarchy)
 const EDGES: Array<[AgentId, AgentId]> = [
   ['ziyue', 'anmaioyi'],
@@ -98,23 +103,52 @@ const EDGES: Array<[AgentId, AgentId]> = [
   ['anmaioyi', 'yefan'],
 ];
 
+// Agent wrapper dimensions — single source of truth so the desk SVG and
+// the avatar sit at the same iso anchor. The wrapper contains the full
+// cuboid bbox: 2*halfW wide (footprint) and depth+2*halfH tall (box
+// height + footprint span). The wrapper is centered on the cuboid's
+// bottom diamond center, which lines up with the isoProject tile center.
+//
+// halfW/halfH/depth are sized so the desk reads as a clear 3D box
+// without overlapping neighbours (tiles are 26% apart in iso x, so
+// desk width 2*halfW=24% leaves a 2% gap).
+// B1.3b — desk footprint sized to fit the auto-fit iso grid.
+// With Sx=11.33 between agent centers, the wrapper must be ≤ 11% wide
+// to avoid neighbour overlap. The footprint below (2*halfW=9) leaves
+// a 2% margin around the desk itself; the wrapper adds 1% padding on
+// each side for sprite/label clearance.
+const ISO_DESK_HALF_W = 4.5;
+const ISO_DESK_HALF_H = 2.25;
+const ISO_DESK_DEPTH  = 2.0;
+const ISO_DESK_PAD    = 1;
+const AGENT_WRAPPER_W = (ISO_DESK_HALF_W + ISO_DESK_PAD) * 2;  // 11
+const AGENT_WRAPPER_H = ISO_DESK_DEPTH + (ISO_DESK_HALF_H + ISO_DESK_PAD) * 2;  // 2 + 6.5 = 8.5
+// Top of the desk in wrapper-local % = where the avatar's feet should sit.
+// The cuboid's top diamond center is at viewBox y=-depth; mapped to SVG
+// (which fills the wrapper), that's y = (depth + halfH + pad) / vbH.
+const DESK_TOP_Y_PCT = ((ISO_DESK_DEPTH + ISO_DESK_HALF_H + ISO_DESK_PAD) / AGENT_WRAPPER_H) * 100;
+
 export function OfficeMap() {
   const agents = useStore((s) => s.agents);
   const openDetailPanel = useStore((s) => s.openDetailPanel);
 
   // Position state for each agent (can be different from home desk when walking)
-  const [positions, setPositions] = useState<Record<AgentId, Coords>>(() => ({ ...DESK_COORDS }));
+  const [positions, setPositions] = useState<Record<AgentId, Coords>>(() => ({ ...HOME_COORDS }));
   // Waddling state to trigger wobbling keyframes
   const [waddling, setWaddling] = useState<Record<AgentId, boolean>>(() => ({
     ziyue: false, anmaioyi: false, wenshu: false, yanxin: false, jianfeng: false, shihao: false, yefan: false
   }));
   // Delivery speech bubble state — bubble text per agent
   const [deliveries, setDeliveries] = useState<Record<AgentId, string | null>>(() => ({
-    ziyue: null, anmaioyi: null, wenshu: null, yanxin: null, jianfeng: null, shihao: null, yefan: null
+    ziyue: null, anmaioyi: null, wenshu: null, yanxin: null, jianfeng: null, shihao: null, yefan: null,
   }));
   // Celebration burst (sparkle) on arrival — keyed by agent id with timestamp
   const [sparkles, setSparkles] = useState<Record<AgentId, number | null>>(() => ({
-    ziyue: null, anmaioyi: null, wenshu: null, yanxin: null, jianfeng: null, shihao: null, yefan: null
+    ziyue: null, anmaioyi: null, wenshu: null, yanxin: null, jianfeng: null, shihao: null, yefan: null,
+  }));
+  // B1.3 — per-agent sprite availability. Starts true; flips false on <img> error.
+  const [spriteOk, setSpriteOk] = useState<Record<AgentId, boolean>>(() => ({
+    ziyue: true, anmaioyi: true, wenshu: true, yanxin: true, jianfeng: true, shihao: true, yefan: true,
   }));
 
   const prevStatuses = useRef<Record<AgentId, AgentStatus>>({
@@ -128,7 +162,7 @@ export function OfficeMap() {
     // 1. Start waddling
     setWaddling((prev) => ({ ...prev, [agentId]: true }));
     // 2. Set target coordinates to target desk with offset if targeting Anmaioyi
-    const baseCoords = DESK_COORDS[targetId];
+    const baseCoords = HOME_COORDS[targetId];
     const offset = targetId === 'anmaioyi' ? (DELIVERY_OFFSETS[agentId] || { x: 0, y: 0 }) : { x: 0, y: 0 };
     setPositions((prev) => ({
       ...prev,
@@ -164,10 +198,10 @@ export function OfficeMap() {
 
     const offset = DELIVERY_OFFSETS[id] || { x: 0, y: 0 };
     const targetPos = {
-      x: DESK_COORDS['anmaioyi'].x + offset.x,
-      y: DESK_COORDS['anmaioyi'].y + offset.y
+      x: HOME_COORDS['anmaioyi'].x + offset.x,
+      y: HOME_COORDS['anmaioyi'].y + offset.y
     };
-    const ownPos = DESK_COORDS[id];
+    const ownPos = HOME_COORDS[id];
     const agent = getAgent(id);
 
     // Arrived at Anmaioyi's desk — show speech bubble + sparkle burst
@@ -224,8 +258,8 @@ export function OfficeMap() {
         preserveAspectRatio="none"
       >
         {EDGES.map(([from, to]) => {
-          const a = DESK_COORDS[from];
-          const b = DESK_COORDS[to];
+          const a = HOME_COORDS[from];
+          const b = HOME_COORDS[to];
           const fromAgent = getAgent(from);
           const active = fromAgent && fromAgent.status !== 'idle';
           return (
@@ -243,7 +277,9 @@ export function OfficeMap() {
 
       {/* Diamond floor — render BEFORE desks/avatars so agents sit on top. */}
       {/* Each tile is a div rotated 45° + scaleY 0.5 to become a diamond.   */}
-      {/* Width/height in % = 2*TILE_W / 2*TILE_H to cover the iso tile area.*/}
+      {/* Width/height in % = 2*AUTO_FIT.Sx / 2*AUTO_FIT.Sy to cover the iso tile area.
+          The tile is the unrotated square that gets rotated 45° + scaleY 0.5, so
+          its unscaled height must be 2 * the desired screen height (Sy). */}
       <div className="absolute inset-0 pointer-events-none" aria-hidden>
         {tiles.map((t) => {
           const toneBg =
@@ -260,8 +296,8 @@ export function OfficeMap() {
               style={{
                 left: `${t.x}%`,
                 top: `${t.y}%`,
-                width: `${TILE_W * 2}%`,
-                height: `${TILE_H * 4}%`, // unscaled height: 2 * TILE_H = the side length of the rotated square
+                width: `${AUTO_FIT.Sx * 2}%`,
+                height: `${AUTO_FIT.Sy * 4}%`, // unscaled: 2 * desired screen y (Sy)
                 backgroundColor: toneBg,
                 borderColor: toneBorder,
                 transform: 'translate(-50%, -50%) rotate(45deg) scaleY(0.5)',
@@ -273,29 +309,13 @@ export function OfficeMap() {
         })}
       </div>
 
-      {/* Render Desks in Background — sit on the iso tile of each agent */}
-      {Object.entries(DESK_COORDS).map(([id, coords]) => {
-        const agent = getAgent(id as AgentId);
-        if (!agent) return null;
-        const active = agent.status !== 'idle';
-
-        return (
-          <div
-            key={`desk-${id}`}
-            style={{ left: `${coords.x}%`, top: `${coords.y + DESK_FLOOR_DROP}%` }}
-            className="absolute -translate-x-1/2 -translate-y-1/2 w-16 h-9 rounded-lg bg-slate-900/40 border border-white/5 flex items-center justify-center shadow-inner pointer-events-none transition-all duration-300"
-          >
-            {/* glowing monitor — status shown via the avatar pill, screen just glows when active */}
-            <div
-              className={`w-7 h-4 rounded bg-slate-950/80 border transition-all ${
-                active ? 'computer-glow border-sky-400/50' : 'border-slate-700/60'
-              }`}
-            />
-          </div>
-        );
-      })}
-
-      {/* Render Moving Agents */}
+      {/* Per-agent group: desk (iso box) + avatar (billboard). Each wrapper
+          is anchored at the agent's iso tile center; the wrapper's zIndex
+          = depthZ(home col, home row) so foreground agents sit on top of
+          background ones. The outer motion.div handles delivery walk —
+          the entire station (desk + avatar) translates together — while a
+          nested motion.div carries the waddle rotate/y bob on the avatar
+          alone (so the desk doesn't tilt). */}
       {agents.map((agent) => {
         const coords = positions[agent.id];
         if (!coords) return null;
@@ -305,134 +325,219 @@ export function OfficeMap() {
         const isThinking = agent.status === 'thinking';
         const isWorking = agent.status === 'working';
         const isCore = CORE_AGENTS.has(agent.id);
+        const { col: homeCol, row: homeRow } = ISO_GRID[agent.id];
+        const active = agent.status !== 'idle';
 
         return (
           <motion.div
-            key={`agent-sprite-${agent.id}`}
+            key={`agent-group-${agent.id}`}
+            data-agent-id={agent.id}
             animate={{
               left: `${coords.x}%`,
-              top: `${coords.y - 6}%`,
-              rotate: isWaddling ? [-4, 4] : 0,
-              y: isWaddling ? [0, -6] : 0,
+              top: `${coords.y}%`,
             }}
-            transition={isWaddling ? waddleTransition : normalTransition}
+            transition={normalTransition}
             onAnimationComplete={() => handleArrival(agent.id)}
-            className="absolute -translate-x-1/2 -translate-y-1/2 z-20 cursor-pointer flex flex-col items-center group"
-            onClick={() => openDetailPanel(agent.id)}
-            style={{ originY: 0.9 }}
+            className="absolute flex flex-col items-center"
+            style={{
+              // B1.2 — z-index = depthZ(home col, home row) so foreground
+              // agents (higher col+row) render on top of background ones.
+              zIndex: depthZ(homeCol, homeRow),
+              width: `${AGENT_WRAPPER_W}%`,
+              height: `${AGENT_WRAPPER_H}%`,
+              // Anchor wrapper at its top-left, but children inside use the
+              // wrapper's centre as the iso origin. So we shift the wrapper
+              // left by half its width and up by half its height to keep
+              // isoProject(col,row) as the visual anchor.
+              marginLeft: `-${AGENT_WRAPPER_W / 2}%`,
+              marginTop: `-${AGENT_WRAPPER_H / 2}%`,
+            }}
           >
-            {/* 💭 Thought bubble while thinking (idle conversation) */}
-            <AnimatePresence>
-              {isThinking && !speech && (
-                <motion.div
-                  key="thought"
-                  initial={{ scale: 0, opacity: 0, y: 8 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
-                  exit={{ scale: 0, opacity: 0 }}
-                  transition={{ duration: 0.25 }}
-                  className="absolute -top-7 text-lg pointer-events-none select-none"
-                >
-                  💭
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* Iso desk — the SVG fills the wrapper directly. ViewBox is
+                centered on the cuboid's bottom diamond center (which sits
+                on the floor tile center) and spans the full cuboid
+                bbox. 1 viewBox unit = 1% of the office container, so the
+                geometry matches the wrapper %-units. */}
+            <IsoDesk
+              agentId={agent.id}
+              color={agent.color}
+              halfW={ISO_DESK_HALF_W}
+              halfH={ISO_DESK_HALF_H}
+              depth={ISO_DESK_DEPTH}
+              active={active}
+            />
 
-            {/* 💬 Speech bubble at delivery — replaces old box popup */}
-            <AnimatePresence>
-              {speech && (
-                <motion.div
-                  key="speech"
-                  initial={{ scale: 0.6, y: 12, opacity: 0 }}
-                  animate={{ scale: 1, y: 0, opacity: 1 }}
-                  exit={{ scale: 0.6, y: -4, opacity: 0 }}
-                  transition={{ type: 'spring', stiffness: 380, damping: 22 }}
-                  className="absolute -top-9 z-30 pointer-events-none select-none"
-                >
-                  <div className="relative bg-white text-slate-900 text-[9px] font-semibold px-2 py-1 rounded-2xl shadow-lg whitespace-nowrap border border-slate-200">
-                    {speech}
-                    {/* Bubble tail */}
-                    <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 rotate-45 bg-white border-b border-r border-slate-200" />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* ✨ Sparkle burst on arrival */}
-            <AnimatePresence>
-              {sparkleAt && Date.now() - sparkleAt < 1200 && (
-                <motion.div
-                  key={`spark-${sparkleAt}`}
-                  initial={{ scale: 0, opacity: 1 }}
-                  animate={{ scale: 2.2, opacity: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 1.0, ease: 'easeOut' }}
-                  className="absolute inset-0 flex items-center justify-center text-2xl pointer-events-none z-30"
-                >
-                  ✨
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* 📄 Trailing task paper while walking with a task */}
-            <AnimatePresence>
-              {isWaddling && (
-                <motion.div
-                  key="paper"
-                  initial={{ opacity: 0, scale: 0.6 }}
-                  animate={{ opacity: 1, scale: 1, rotate: [-8, 8] }}
-                  exit={{ opacity: 0, scale: 0.6 }}
-                  transition={{
-                    rotate: { repeat: Infinity, repeatType: 'mirror', duration: 0.3 },
-                    opacity: { duration: 0.2 },
-                  }}
-                  className="absolute -right-3 top-1 text-base pointer-events-none select-none drop-shadow"
-                >
-                  📄
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* ⚙️ Working indicator — small gear spin near worker while working */}
-            <AnimatePresence>
-              {isWorking && !isWaddling && !speech && (
-                <motion.div
-                  key="gear"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1, rotate: 360 }}
-                  exit={{ opacity: 0 }}
-                  transition={{
-                    rotate: { repeat: Infinity, ease: 'linear', duration: 3 },
-                    opacity: { duration: 0.2 },
-                  }}
-                  className="absolute -right-3 -top-1 text-[10px] pointer-events-none select-none opacity-70"
-                >
-                  ⚙️
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Avatar & ring — core agents (ziyue/anmaioyi) render larger for hierarchy */}
+            {/* Avatar billboard — flat, ตั้งตรง, no rotate. Anchored so
+                its bottom sits on the desk top.
+                Outer <div>: positioning — left/top + translate(-50%, -100%)
+                so the bottom-center of the inner motion.div lands on the
+                desk top.
+                Inner <motion.div>: waddle rotate + y bob ONLY. Motion
+                rewrites the entire transform on animation, so the
+                positioning translate has to live on the parent
+                (otherwise the avatar snaps to the top-left during the
+                waddle). */}
             <div
-              className={`rounded-xl bg-slate-900/90 border transition-all duration-300 group-hover:scale-105 ${
-                isCore ? 'p-1 ring-1 ring-white/10' : 'p-0.5'
-              } ${STATUS_BORDER[agent.status]}`}
-              style={{ boxShadow: isWaddling ? '0 6px 10px -3px rgba(0,0,0,0.5)' : undefined }}
+              className="absolute"
+              style={{
+                left: '50%',
+                top: `${DESK_TOP_Y_PCT}%`,
+                transform: 'translate(-50%, -100%)',
+                transformOrigin: '50% 100%',
+              }}
             >
-              <RiveAvatar id={agent.id} status={agent.status} color={agent.color} size={isCore ? 'md' : 'sm'} />
-            </div>
-
-            {/* Name + role + status pill (replaces the red health badge) */}
-            <div className="mt-1.5 flex flex-col items-center gap-0.5 bg-slate-950/70 rounded-lg px-2 py-1 backdrop-blur-sm">
-              <span className={`font-semibold leading-none ${isCore ? 'text-[11px]' : 'text-[9px]'}`} style={{ color: agent.color }}>
-                {agent.name}
-              </span>
-              <span className="text-[7px] text-slate-500 leading-none">{agent.role}</span>
-              <span
-                className={`mt-0.5 flex items-center gap-1 text-[8px] font-medium px-1.5 py-0.5 rounded-full border ${STATUS_PILL[agent.status].pill}`}
+              <motion.div
+                animate={{
+                  rotate: isWaddling ? [-4, 4] : 0,
+                  y: isWaddling ? [0, -3] : 0,
+                }}
+                transition={isWaddling ? waddleTransition : { duration: 0 }}
+                className="flex flex-col items-center cursor-pointer group"
+                style={{ transformOrigin: '50% 100%' }}
+                onClick={() => openDetailPanel(agent.id)}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${STATUS_PILL[agent.status].dot}`} />
-                {STATUS_TEXT_TH[agent.status]}
-              </span>
+              {/* 💭 Thought bubble while thinking (idle conversation) */}
+              <AnimatePresence>
+                {isThinking && !speech && (
+                  <motion.div
+                    key="thought"
+                    initial={{ scale: 0, opacity: 0, y: 8 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="absolute -top-7 text-lg pointer-events-none select-none"
+                  >
+                    💭
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* 💬 Speech bubble at delivery — replaces old box popup */}
+              <AnimatePresence>
+                {speech && (
+                  <motion.div
+                    key="speech"
+                    initial={{ scale: 0.6, y: 12, opacity: 0 }}
+                    animate={{ scale: 1, y: 0, opacity: 1 }}
+                    exit={{ scale: 0.6, y: -4, opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+                    className="absolute -top-9 z-30 pointer-events-none select-none"
+                  >
+                    <div className="relative bg-white text-slate-900 text-[9px] font-semibold px-2 py-1 rounded-2xl shadow-lg whitespace-nowrap border border-slate-200">
+                      {speech}
+                      {/* Bubble tail */}
+                      <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 rotate-45 bg-white border-b border-r border-slate-200" />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* ✨ Sparkle burst on arrival */}
+              <AnimatePresence>
+                {sparkleAt && Date.now() - sparkleAt < 1200 && (
+                  <motion.div
+                    key={`spark-${sparkleAt}`}
+                    initial={{ scale: 0, opacity: 1 }}
+                    animate={{ scale: 2.2, opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 1.0, ease: 'easeOut' }}
+                    className="absolute inset-0 flex items-center justify-center text-2xl pointer-events-none z-30"
+                  >
+                    ✨
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* 📄 Trailing task paper while walking with a task */}
+              <AnimatePresence>
+                {isWaddling && (
+                  <motion.div
+                    key="paper"
+                    initial={{ opacity: 0, scale: 0.6 }}
+                    animate={{ opacity: 1, scale: 1, rotate: [-8, 8] }}
+                    exit={{ opacity: 0, scale: 0.6 }}
+                    transition={{
+                      rotate: { repeat: Infinity, repeatType: 'mirror', duration: 0.3 },
+                      opacity: { duration: 0.2 },
+                    }}
+                    className="absolute -right-3 top-1 text-base pointer-events-none select-none drop-shadow"
+                  >
+                    📄
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* ⚙️ Working indicator — small gear spin near worker while working */}
+              <AnimatePresence>
+                {isWorking && !isWaddling && !speech && (
+                  <motion.div
+                    key="gear"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1, rotate: 360 }}
+                    exit={{ opacity: 0 }}
+                    transition={{
+                      rotate: { repeat: Infinity, ease: 'linear', duration: 3 },
+                      opacity: { duration: 0.2 },
+                    }}
+                    className="absolute -right-3 -top-1 text-[10px] pointer-events-none select-none opacity-70"
+                  >
+                    ⚙️
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Avatar & ring — core agents (ziyue/anmaioyi) render larger for hierarchy.
+                  B1.3 — try sprite PNG first; on 404 the <img> onError flips
+                  spriteOk[id] to false and we fall through to the RiveAvatar
+                  emoji renderer. */}
+              <div
+                className={`rounded-xl bg-slate-900/90 border transition-all duration-300 group-hover:scale-105 ${
+                  isCore ? 'p-1 ring-1 ring-white/10' : 'p-0.5'
+                } ${STATUS_BORDER[agent.status]}`}
+                style={{ boxShadow: isWaddling ? '0 6px 10px -3px rgba(0,0,0,0.5)' : undefined }}
+              >
+                {spriteOk[agent.id] ? (
+                  <img
+                    src={CHARACTER_SPRITE[agent.id]}
+                    alt={agent.name}
+                    onError={() => setSpriteOk((prev) => (prev[agent.id] ? prev : { ...prev, [agent.id]: false }))}
+                    className={`${isCore ? 'w-12 h-12' : 'w-10 h-10'} object-contain`}
+                    draggable={false}
+                  />
+                ) : (
+                  <RiveAvatar id={agent.id} status={agent.status} color={agent.color} size={isCore ? 'sm' : 'sm'} />
+                )}
+              </div>
+
+              {/* B1.3b — compact label (name + role only) positioned to avoid
+                  overlap with neighbours. Status is shown via the sprite border
+                  ring (STATUS_BORDER) and the name colour; the full status pill
+                  is reserved for the detail panel so the map stays clean.
+
+                  Stagger rule:
+                  - row === ISO_GRID.max_row  (bottom row, no agent below)
+                      → label ABOVE the sprite
+                  - else (top/mid, an agent may be below)
+                      → label BELOW the sprite
+                  This way labels never fight with the row below, and the
+                  bottom row's labels sit on the empty floor in front of them. */}
+              <div
+                className={`absolute left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none ${
+                  homeRow === 4 ? 'bottom-full mb-1' : 'top-full mt-1'
+                }`}
+                style={{ width: 'max-content', maxWidth: '14%' }}
+              >
+                <span
+                  className="font-semibold leading-none whitespace-nowrap"
+                  style={{ color: agent.color, fontSize: isCore ? '10px' : '8.5px' }}
+                >
+                  {agent.name}
+                </span>
+                <span className="mt-0.5 text-slate-400 leading-none whitespace-nowrap" style={{ fontSize: '6.5px' }}>
+                  {agent.role}
+                </span>
+              </div>
+              </motion.div>
             </div>
           </motion.div>
         );
