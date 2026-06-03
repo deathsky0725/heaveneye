@@ -14,6 +14,7 @@ import chokidar from 'chokidar';
 import { HEAVENEYE_EVENT_FILE, type AgentId, AGENTS } from '../config.ts';
 import { state } from '../state/engine.ts';
 import { JsonlTail } from './jsonl-tail.ts';
+import { recordAgentEvent } from './alertThresholds.ts';
 
 interface HermesHookEvent {
   event: 'session_start' | 'tool_use' | 'api_request' | 'session_end';
@@ -57,6 +58,7 @@ function handleEvent(ev: HermesHookEvent) {
       const agent = resolveAgent(ev);
       if (!agent) return; // un-attributed session (no profile, no kanban dispatch) — ignore
       sessionProfile.set(ev.session_id, agent);
+      recordAgentEvent(agent);
       state.onHermesSessionStart(agent, {
         sessionId: ev.session_id,
         taskId: ev.kanban_task ?? undefined,
@@ -68,12 +70,14 @@ function handleEvent(ev: HermesHookEvent) {
     case 'tool_use': {
       const agent = resolveAgent(ev);
       if (!agent || !ev.tool_name) return;
+      recordAgentEvent(agent);
       state.onHermesToolUse(agent, ev.tool_name);
       return;
     }
     case 'api_request': {
       const agent = resolveAgent(ev);
       if (!agent) return;
+      recordAgentEvent(agent);
       const t = ev.tokens ?? {};
       const tsMs = ev.ts ? new Date(ev.ts).getTime() : undefined;
       state.onTokenUsage(agent, {
@@ -87,6 +91,7 @@ function handleEvent(ev: HermesHookEvent) {
     case 'session_end': {
       const agent = resolveAgent(ev);
       if (!agent) return;
+      recordAgentEvent(agent);
       state.onHermesSessionEnd(agent, ev.session_id, ev.ts);
       sessionProfile.delete(ev.session_id);
       return;

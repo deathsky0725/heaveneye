@@ -7,6 +7,7 @@
     "dev:server": "bun --watch server/index.ts",
     "dev:web": "vite",
     "dev": "bun run --silent dev:server & bun run --silent dev:web ; wait",
+    "dev:tauri": "bun run dev:web & tauri dev",
     "build": "vite build",
     "start": "bun server/index.ts"
   },
@@ -23,8 +24,10 @@
   },
   "dependencies": {
     "@rive-app/react-canvas": "^4.28.4",
+    "@tauri-apps/api": "^2.11.0",
     "chokidar": "^5.0.0",
     "hono": "^4.12.18",
+    "motion": "^12.40.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "zustand": "^5.0.13"

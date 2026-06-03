@@ -4,24 +4,390 @@
   --font-sans: "Sarabun", "Inter", system-ui, sans-serif;
 }
 
-html, body, #root { height: 100%; }
-body {
+/* ── Light theme tokens ─────────────────────────── */
+:root.light {
+  --color-bg-primary:    #f8fafc;   /* slate-50  */
+  --color-bg-secondary: #f1f5f9;   /* slate-100 */
+  --color-bg-tertiary:  #e2e8f0;   /* slate-200 */
+
+  /* Surface — frosted glass for light mode */
+  --color-surface:       rgba(255, 255, 255, 0.75);
+
+  /* Border */
+  --color-border:       rgba(15, 23, 42, 0.10);
+
+  /* Text */
+  --color-text-primary:  #0f172a;   /* slate-900 */
+  --color-text-secondary:#475569;   /* slate-600 */
+  --color-text-muted:    #94a3b8;   /* slate-400 */
+
+  /* Panel shadows — lighter for light mode */
+  --shadow-panel-sm:  0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-panel-md:  0 8px 32px rgba(0, 0, 0, 0.10);
+  --shadow-panel-lg:   0 16px 64px rgba(0, 0, 0, 0.12);
+
+  /* Glass depth tokens — light mode */
+  --glass-surface:   0 8px 32px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.9);
+  --glass-overlay:   0 16px 64px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.95);
+  --glass-deep:      0 24px 80px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,1.0);
+  --glass-ambient:   0 0 40px rgba(99,102,241,0.10), 0 0 12px rgba(99,102,241,0.05);
+}
+
+/* ── Dark theme tokens (default) ─────────────── */
+:root, :root.dark {
+  --color-bg-primary:    #020617;   /* slate-950 */
+  --color-bg-secondary: #0f172a;   /* slate-900 */
+  --color-bg-tertiary:  #1e293b;   /* slate-800 */
+
+  /* Surface — glass panels */
+  --color-surface:       rgba(15, 23, 42, 0.7);
+
+  /* Border */
+  --color-border:        rgba(255, 255, 255, 0.08);
+
+  /* Text */
+  --color-text-primary:  #f1f5f9;   /* slate-100 */
+  --color-text-secondary:#94a3b8;   /* slate-400 */
+  --color-text-muted:    #64748b;   /* slate-500 */
+
+  /* Agent accent colors — shared across both themes */
+  --color-agent-hermes:  #3b82f6;   /* blue-500 — Hermes */
+  --color-agent-claude:  #10b981;   /* emerald-500 — Claude/Agy */
+  --color-agent-agy:     #f59e0b;   /* amber-500 — Agy */
+
+  /* Typography */
+  --font-sans:  "Sarabun", "Inter", system-ui, sans-serif;
+  --font-mono:  "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+
+  /* Spacing scale (base 4px) */
+  --space-0:  0;
+  --space-1:  0.25rem;   /* 4px  */
+  --space-2:  0.5rem;     /* 8px  */
+  --space-3:  0.75rem;    /* 12px */
+  --space-4:  1rem;       /* 16px */
+  --space-5:  1.25rem;    /* 20px */
+  --space-6:  1.5rem;     /* 24px */
+  --space-8:  2rem;       /* 32px */
+  --space-10: 2.5rem;     /* 40px */
+  --space-12: 3rem;       /* 48px */
+  --space-16: 4rem;       /* 64px */
+  --space-20: 5rem;       /* 80px */
+  --space-24: 6rem;       /* 96px */
+
+  /* Border radius scale */
+  --radius-none: 0;
+  --radius-sm:   0.25rem;  /* 4px  */
+  --radius-md:    0.5rem;   /* 8px  */
+  --radius-lg:    0.75rem;  /* 12px */
+  --radius-xl:    1rem;     /* 16px */
+  --radius-2xl:   1.5rem;   /* 24px */
+  --radius-3xl:   2rem;     /* 32px */
+  --radius-full:  9999px;
+
+  /* Panel shadow scale */
+  --shadow-panel-sm:  0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-panel-md:  0 8px 32px rgba(0, 0, 0, 0.4);
+  --shadow-panel-lg:   0 16px 64px rgba(0, 0, 0, 0.5);
+
+  /* Agent glow shadows */
+  --shadow-glow-blue:     0 0 24px rgba(59, 130, 246, 0.4), 0 0 8px rgba(59, 130, 246, 0.2);
+  --shadow-glow-emerald:  0 0 24px rgba(16, 185, 129, 0.4), 0 0 8px rgba(16, 185, 129, 0.2);
+  --shadow-glow-amber:    0 0 24px rgba(245, 158, 11, 0.4), 0 0 8px rgba(245, 158, 11, 0.2);
+
+  /* Glass depth tokens */
+  --glass-surface:   0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+  --glass-overlay:   0 16px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+  --glass-deep:      0 24px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.10);
+  --glass-ambient:   0 0 40px rgba(99,102,241,0.2), 0 0 12px rgba(99,102,241,0.1);
+}
+
+/* Light mode body background */
+:root.light body,
+:root.light html {
   background:
+    radial-gradient(ellipse at 0% 0%,   rgba(226,232,240,0.6) 0%, transparent 50%),
+    radial-gradient(ellipse at 100% 0%,  rgba(241,245,249,0.4) 0%, transparent 50%),
+    radial-gradient(ellipse at 0% 100%,  rgba(236,72,153,0.06) 0%, transparent 40%),
+    radial-gradient(ellipse at 100% 100%, rgba(99,102,241,0.08) 0%, transparent 40%),
+    radial-gradient(ellipse at top, rgba(99,102,241,0.08), transparent 60%),
+    radial-gradient(ellipse at bottom, rgba(236,72,153,0.06), transparent 60%),
+    #f8fafc;
+}
+
+/* Dark mode body background (default) */
+:root, :root.dark body, :root.dark html {
+  background:
+    radial-gradient(ellipse at 0% 0%,   rgba(30,41,59,0.5) 0%, transparent 50%),
+    radial-gradient(ellipse at 100% 0%,  rgba(15,23,42,0.4) 0%, transparent 50%),
+    radial-gradient(ellipse at 0% 100%,  rgba(236,72,153,0.06) 0%, transparent 40%),
+    radial-gradient(ellipse at 100% 100%, rgba(99,102,241,0.08) 0%, transparent 40%),
     radial-gradient(ellipse at top, rgba(99,102,241,0.12), transparent 60%),
     radial-gradient(ellipse at bottom, rgba(236,72,153,0.10), transparent 60%),
     #020617;
 }
 
-@keyframes breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
-@keyframes wiggle  { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
-@keyframes bounce-soft { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+/* Theme transition — smooth switch between dark/light */
+html, body {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+html, body, #root { height: 100%; }
+
+/* ── Agent activity keyframes ── */
+@keyframes breathe {
+  0%,100% { transform: scale(1); }
+  50%      { transform: scale(1.04); }
+}
+@keyframes wiggle {
+  0%,100% { transform: rotate(-3deg); }
+  50%      { transform: rotate(3deg); }
+}
+@keyframes bounce-soft {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+@keyframes pulse-amber {
+  0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+  50%      { box-shadow: 0 0 0 6px rgba(245,158,11,0.3); }
+}
+@keyframes sparkle {
+  0%   { transform: scale(1) rotate(0deg); filter: brightness(1); }
+  25%  { transform: scale(1.15) rotate(-5deg); filter: brightness(1.4) drop-shadow(0 0 8px currentColor); }
+  50%  { transform: scale(1.05) rotate(3deg);  filter: brightness(1.2); }
+  75%  { transform: scale(1.1) rotate(-2deg);  filter: brightness(1.3); }
+  100% { transform: scale(1) rotate(0deg);  filter: brightness(1); }
+}
+@keyframes ripple {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(59,130,246,0.5); }
+  50%  { transform: scale(1.08); box-shadow: 0 0 0 10px rgba(59,130,246,0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+}
+@keyframes error-flash {
+  0%,100% { transform: scale(1); filter: none; }
+  10%,30%,50% { transform: scale(0.95); filter: brightness(1.5) hue-rotate(-20deg) saturate(2); }
+  20%,40% { transform: scale(1.02); filter: brightness(0.9); }
+}
 @keyframes flash-inbox-keyframe {
   0%   { background-color: rgba(245, 158, 11, 0.35); border-color: rgba(245, 158, 11, 0.7); }
   50%  { background-color: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); }
   100% { background-color: rgba(30, 41, 59, 0.6); border-color: rgba(51, 65, 85, 0.5); }
 }
+@keyframes ripple-burst {
+  0%   { transform: scale(0); opacity: 0.6; }
+  100% { transform: scale(4); opacity: 0; }
+}
+/* ambient glow pulse for active agents */
+@keyframes ambient-glow {
+  0%,100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
 
-.anim-breathe { animation: breathe 3s ease-in-out infinite; }
-.anim-wiggle  { animation: wiggle 0.5s ease-in-out infinite; }
-.anim-bounce  { animation: bounce-soft 1.2s ease-in-out infinite; }
-.flash-inbox  { animation: flash-inbox-keyframe 0.9s ease-out forwards; }
+/* ── Agent activity animation classes ── */
+.anim-breathe      { animation: breathe 3s ease-in-out infinite; }
+.anim-wiggle      { animation: wiggle 0.5s ease-in-out infinite; }
+.anim-bounce      { animation: bounce-soft 1.2s ease-in-out infinite; }
+.anim-pulse-amber { animation: pulse-amber 2s ease-in-out infinite; }
+.anim-sparkle     { animation: sparkle 0.8s ease-out forwards; }
+.anim-ripple      { animation: ripple 0.6s ease-out forwards; }
+.anim-error-flash { animation: error-flash 0.5s ease-out forwards; }
+.anim-idle        { animation: breathe 4s ease-in-out infinite; }
+.flash-inbox      { animation: flash-inbox-keyframe 0.9s ease-out forwards; }
+.anim-ambient-glow { animation: ambient-glow 2.5s ease-in-out infinite; }
+
+/* ── Glass panel base ── */
+.glass-surface {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--glass-surface);
+}
+/* inner highlight — pseudo-element top-edge gleam */
+.glass-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 40%);
+  pointer-events: none;
+}
+
+/* Glass overlay — modals, dropdowns, CommandPalette */
+.glass-overlay {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(24px) saturate(200%);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: var(--glass-overlay);
+}
+/* inner highlight */
+.glass-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, transparent 40%);
+  pointer-events: none;
+}
+
+/* Glass deep — active/selected elements */
+.glass-deep {
+  background: rgba(30, 41, 59, 0.9);
+  backdrop-filter: blur(32px) saturate(220%);
+  -webkit-backdrop-filter: blur(32px) saturate(220%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: var(--glass-deep);
+}
+.glass-deep::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.14) 0%, transparent 35%);
+  pointer-events: none;
+}
+
+/* Ambient glow behind active agents */
+.agent-ambient-glow {
+  position: relative;
+}
+.agent-ambient-glow::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at center, var(--agent-color, rgba(99,102,241,0.3)) 0%, transparent 70%);
+  filter: blur(8px);
+  opacity: 0.5;
+  z-index: -1;
+  animation: ambient-glow 2.5s ease-in-out infinite;
+}
+
+/* Radial depth overlay for panels — simulates 3D curvature */
+.panel-depth-overlay {
+  position: relative;
+}
+.panel-depth-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* Toast slide-in from right (handled by motion/react, but container is fixed) */
+
+/* Button micro-interactions */
+.btn-press {
+  transition: transform 80ms ease-out, box-shadow 80ms ease-out;
+}
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* Ripple container — parent must have `overflow: hidden` or `position: relative` */
+.ripple-container {
+  position: relative;
+  overflow: hidden;
+}
+.ripple-effect::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, rgba(255,255,255,0.25) 0%, transparent 60%);
+  transform: scale(0);
+  opacity: 0;
+  pointer-events: none;
+}
+.ripple-effect:active::after {
+  animation: ripple 0.5s ease-out forwards;
+}
+
+/* Hover glow on interactive elements */
+.interactive-glow:hover {
+  box-shadow: 0 0 16px rgba(96, 165, 250, 0.25), 0 0 4px rgba(96, 165, 250, 0.15);
+}
+
+/* Focus ring shift */
+.focus-ring:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.6);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+}
+
+/* ── Theme transition ── */
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease !important;
+}
+
+/* ── Light Theme ──────────────────────────────────────────────── */
+:root.light {
+  --color-bg-primary:    #f8fafc;   /* slate-50 */
+  --color-bg-secondary: #f1f5f9;   /* slate-100 */
+  --color-bg-tertiary:  #e2e8f0;   /* slate-200 */
+
+  --color-surface:       rgba(255, 255, 255, 0.85);
+
+  --color-border:        rgba(15, 23, 42, 0.10);
+
+  --color-text-primary:  #0f172a;   /* slate-900 */
+  --color-text-secondary:#475569;   /* slate-600 */
+  --color-text-muted:    #94a3b8;   /* slate-400 */
+
+  /* Glass surfaces need more opacity in light mode to feel solid */
+  --glass-surface:   0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --glass-overlay:   0 8px 32px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --glass-deep:      0 16px 64px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --glass-ambient:   0 0 32px rgba(99, 102, 241, 0.08), 0 0 8px rgba(99, 102, 241, 0.05);
+
+  /* Adjusted shadows for light mode */
+  --shadow-panel-sm:  0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-panel-md:  0 8px 32px rgba(0, 0, 0, 0.10);
+  --shadow-panel-lg:   0 16px 64px rgba(0, 0, 0, 0.12);
+
+  /* Adjusted glows for light mode */
+  --shadow-glow-blue:     0 0 20px rgba(59, 130, 246, 0.25), 0 0 6px rgba(59, 130, 246, 0.15);
+  --shadow-glow-emerald:  0 0 20px rgba(16, 185, 129, 0.25), 0 0 6px rgba(16, 185, 129, 0.15);
+  --shadow-glow-amber:    0 0 20px rgba(245, 158, 11, 0.25), 0 0 6px rgba(245, 158, 11, 0.15);
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Skeleton shimmer */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(30, 41, 59, 0.5) 25%,
+    rgba(51, 65, 85, 0.5) 50%,
+    rgba(30, 41, 59, 0.5) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 0.25rem;
+}
+
+/* ── Office Map Styling ── */
+/* office-isofloor: the iso grid itself is rendered as DOM tiles; we keep
+   a near-flat base wash so empty regions outside the 5x5 grid don't read
+   as completely dead.  The old CSS background-image blueprint grid has
+   been removed for B1.1 — tile stacking replaces it. */
+.office-isofloor {
+  background-color: rgba(2, 6, 23, 0.4);
+}
+:root.light .office-isofloor {
+  background-color: rgba(15, 23, 42, 0.04);
+}
+.computer-glow {
+  animation: screen-pulse 2s ease-in-out infinite;
+}
+@keyframes screen-pulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(96, 165, 250, 0.3), inset 0 0 2px rgba(96, 165, 250, 0.2); opacity: 0.8; }
+  50% { box-shadow: 0 0 10px rgba(96, 165, 250, 0.6), inset 0 0 4px rgba(96, 165, 250, 0.4); opacity: 1; }
+}
+

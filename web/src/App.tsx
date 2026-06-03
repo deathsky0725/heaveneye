@@ -1,14 +1,22 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, lazy, Suspense, useState } from 'react';
 import { connectStream, startUsage5hPolling, fetchInitialInbox, fetchInitialEvents, fetchInitialHealth, useStore } from './store';
-import { AgentCard } from './components/AgentCard';
-import { ConnectionLines } from './components/ConnectionLines';
+import { useThemeStore, applyTheme } from './store/themeStore';
+import { OfficeMap } from './components/OfficeMap';
 import { UsagePanel } from './components/UsagePanel';
 import { InboxPanel } from './components/InboxPanel';
 import { TaskFeedSidebar } from './components/TaskFeedSidebar';
 import { SystemHealth } from './components/SystemHealth';
-import { DiscordPanel } from './components/DiscordPanel';
-import { DetailPanel } from './components/DetailPanel';
-import type { AgentId, AgentSnapshot } from './types';
+import { CrossBoardDashboard } from './components/CrossBoardDashboard';
+import { ReportViewer } from './components/ReportViewer';
+import { ToastContainer } from './components/Toast';
+import { ThemeToggle } from './components/ThemeToggle';
+import { ExportPanel } from './components/ExportPanel';
+import { CommandPalette } from './components/CommandPalette';
+import { AlertSettings } from './components/AlertSettings';
+import type { AgentId, AgentSnapshot, CrashNotificationEntry } from './types';
+
+// DetailPanel is lazy-loaded — only opened on click
+const LazyDetailPanel = lazy(() => import('./components/DetailPanel').then((m) => ({ default: m.DetailPanel })));
 
 export default function App() {
   const agents = useStore((s) => s.agents);
@@ -16,22 +24,75 @@ export default function App() {
   const killError = useStore((s) => s.killError);
   const killSuccess = useStore((s) => s.killSuccess);
   const clearKillFeedback = useStore((s) => s.clearKillFeedback);
-  const orgRef = useRef<HTMLDivElement>(null);
+  const detailPanelId = useStore((s) => s.detailPanelId);
+  const currentTheme = useThemeStore((s) => s.currentTheme);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
+  const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
 
-  useEffect(() => { connectStream(); startUsage5hPolling(); fetchInitialInbox(); fetchInitialEvents(); fetchInitialHealth(); }, []);
+  useEffect(() => {
+    connectStream();
+    startUsage5hPolling();
+    fetchInitialInbox();
+    fetchInitialEvents();
+    fetchInitialHealth();
+  }, []);
 
-  const byId = (id: AgentId): AgentSnapshot | undefined => agents.find((a) => a.id === id);
+  // Apply theme to <html>
+  useEffect(() => {
+    applyTheme(currentTheme);
+  }, [currentTheme]);
+
+  // Crash notification polling (Phase D.2) — poll every 2s while mounted
+  useEffect(() => {
+    const POLL_MS = 2_000;
+    let stopped = false;
+
+    const poll = async () => {
+      if (stopped) return;
+      try {
+        const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
+        const since = useStore.getState().crashNotificationLastChecked;
+        const res = await fetch(`${base}/api/crash-notification/check?since=${since}`);
+        if (!res.ok) return;
+        const data = await res.json() as { notifications: CrashNotificationEntry[] };
+        if (!data.notifications?.length) return;
+        useStore.getState().addCrashNotifications(data.notifications);
+        // Dispatch each to macOS notification center via Tauri
+        for (const entry of data.notifications) {
+          await useStore.getState().dispatchTauriNotification(entry);
+        }
+      } catch { /* silent */ }
+    };
+
+    poll();
+    const id = setInterval(poll, POLL_MS);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  // 'T' key — toggle theme (skip on inputs)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 't' || e.key === 'T') toggleTheme();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [toggleTheme]);
 
   return (
     <>
-      <div className="min-h-full p-6 max-w-screen-2xl mx-auto">
-        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
+      <div className="min-h-full max-w-screen-2xl mx-auto">
+        {/* Header */}
+        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 px-6 pt-6">
           <div className="flex items-center gap-3">
             <div>
               <h1 className="text-2xl font-bold flex items-center gap-2">
                 <span>👁️</span> heaveneye
               </h1>
-              <p className="text-xs text-slate-400">ตาสวรรค์ — มองเห็นทุกการเคลื่อนไหวของทีม</p>
+              <p className="text-xs text-slate-400">Agent Monitor — view-only dashboard</p>
             </div>
             <div className="flex items-center gap-2 text-xs text-slate-400 ml-4">
               <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-rose-500'}`} />
@@ -44,42 +105,56 @@ export default function App() {
               </div>
             )}
           </div>
-          <div className="min-w-0">
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <ExportPanel />
             <UsagePanel />
+            <button
+              onClick={() => setAlertSettingsOpen(true)}
+              className="text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
+              title="Alert Settings"
+            >
+              🔔 Alerts
+            </button>
           </div>
         </header>
 
-        <SystemHealth />
-        <DiscordPanel />
+        {/* Gateway health strip */}
+        <div className="px-6 mb-4">
+          <SystemHealth />
+        </div>
 
-        {agents.length === 0 ? (
-          <div className="text-center text-slate-500 py-20">รอเชื่อมต่อ server...</div>
-        ) : (
-          <div ref={orgRef} className="relative grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-x-12 gap-y-8 items-start">
-            <ConnectionLines agents={agents} containerRef={orgRef} />
-            {/* Left: จื่อเยว่ */}
-            <div className="flex items-center justify-center lg:min-h-[420px]">
-              {byId('ziyue') && <div className="w-full max-w-sm"><AgentCard agent={byId('ziyue')!} /></div>}
-            </div>
+        {/* Virtual Office Map */}
+        <div className="px-6 mb-6">
+          <OfficeMap />
+        </div>
 
-            {/* Right: เมี่ยวอี + ลูกทีม */}
-            <div className="flex flex-col gap-8 min-w-0">
-              <div className="flex justify-center">
-                {byId('anmaioyi') && <div className="w-full max-w-sm"><AgentCard agent={byId('anmaioyi')!} /></div>}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-                {(['wenshu','yanxin','jianfeng','shihao','yefan'] as const).map((id) => {
-                  const a = byId(id);
-                  return a ? <AgentCard key={id} agent={a} compact /> : null;
-                })}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Cross-board kanban summary */}
+        <div className="px-6 mb-4">
+          <CrossBoardDashboard />
+        </div>
+
+        {/* Reports viewer */}
+        <div className="px-6 mb-4">
+          <ReportViewer />
+        </div>
       </div>
+
+      {/* Detail panel — slides in on AgentCard click */}
+      {detailPanelId && (
+        <Suspense fallback={null}>
+          <LazyDetailPanel />
+        </Suspense>
+      )}
+
+      {/* Persistent overlays */}
       <InboxPanel />
       <TaskFeedSidebar />
-      <DetailPanel />
+      <ToastContainer />
+      <CommandPalette />
+      {alertSettingsOpen && (
+        <AlertSettings onClose={() => setAlertSettingsOpen(false)} />
+      )}
     </>
   );
 }

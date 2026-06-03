@@ -99,13 +99,16 @@ function EventRow({ event, isExpanded, onToggle, agentColor }: EventRowProps) {
   );
 }
 
-type Filter = 'all' | 'errors' | 'blocks';
+type Filter = 'all' | KanbanEventEntry['kind'];
+type FilterKind = KanbanEventEntry['kind'];
 
 export function TaskFeedSidebar() {
   const events = useStore((s) => s.events);
   const [expanded, setExpanded] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
-  const [filter, setFilter] = useState<Filter>('all');
+  const [filter, setFilter] = useState<Filter>(() => {
+    return (localStorage.getItem('feedFilter') as Filter) ?? 'all';
+  });
   const [pendingCount, setPendingCount] = useState(0);
   const [lastSeenTs, setLastSeenTs] = useState<string>(() => {
     return localStorage.getItem('feedLastSeenTs') ?? new Date(0).toISOString();
@@ -152,9 +155,8 @@ export function TaskFeedSidebar() {
   };
 
   const filtered = events.filter((ev) => {
-    if (filter === 'errors') return ev.kind === 'blocked';
-    if (filter === 'blocks') return ev.kind === 'blocked';
-    return true;
+    if (filter === 'all') return true;
+    return ev.kind === filter;
   });
 
   const unreadCount = events.filter((ev) => ev.ts > lastSeenTs).length;
@@ -168,7 +170,7 @@ export function TaskFeedSidebar() {
     <>
       {/* Expanded drawer */}
       {expanded && (
-        <div className="fixed left-0 top-0 bottom-0 w-[360px] z-40 flex flex-col bg-slate-900/98 border-r border-slate-700/60 shadow-2xl backdrop-blur">
+        <div className="fixed left-0 top-0 bottom-0 w-[360px] z-40 flex flex-col glass-surface border-r border-white/10">
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-slate-700/50">
             <div className="flex items-center gap-2">
@@ -184,19 +186,22 @@ export function TaskFeedSidebar() {
             </button>
           </div>
 
-          {/* Filter chips */}
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-700/40">
-            {(['all', 'errors', 'blocks'] as Filter[]).map((f) => (
+          {/* Filter chips — scrollable horizontal */}
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-700/40 overflow-x-auto">
+            {(['all', 'claimed', 'completed', 'blocked', 'decomposed', 'spawned', 'heartbeat', 'unblocked'] as Filter[]).map((f) => (
               <button
                 key={f}
-                onClick={() => setFilter(f)}
-                className={`text-xs px-3 py-1 rounded-full transition-colors ${
+                onClick={() => {
+                  setFilter(f);
+                  localStorage.setItem('feedFilter', f);
+                }}
+                className={`text-xs px-3 py-1 rounded-full transition-colors shrink-0 ${
                   filter === f
                     ? 'bg-indigo-600 text-white'
                     : 'bg-slate-800 text-slate-400 hover:text-slate-200'
                 }`}
               >
-                {f === 'all' ? 'All' : f === 'errors' ? 'Errors' : 'Blocks'}
+                {f === 'all' ? 'All' : KIND_LABEL[f as FilterKind]}
               </button>
             ))}
           </div>

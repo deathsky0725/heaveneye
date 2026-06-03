@@ -41,7 +41,8 @@ export type ServerEvent =
   | { type: 'inbox_reset' }
   | { type: 'kanban_event'; event: KanbanEventEntry }
   | { type: 'system_health'; health: SystemHealth }
-  | { type: 'notification'; entry: NotificationEntry };
+  | { type: 'notification'; entry: NotificationEntry }
+  | { type: 'agent_activity'; agentId: AgentId; event: 'message' | 'task_done' | 'error' };
 
 export interface Usage5hEntry {
   agent: AgentId;
@@ -81,6 +82,8 @@ export interface GatewayHealth {
   startedAt: string | null;
   alive: boolean;
   lastCheckedAt: string;
+  cpuPercent?: number | null;
+  ramBytes?: number | null;
 }
 
 export interface SystemHealth {
@@ -105,4 +108,65 @@ export interface RelayStatus {
   hasPendingReport: boolean;
   lastRelayTime: string | null;
   relayCount: number;
+}
+
+// ── Dependency DAG (Phase A.1) ──────────────────────────────────────────────
+
+export interface DagNode {
+  id: string;
+  title: string;
+  status: string;
+  priority: number;
+  blockedBy: string[];
+  createdAt: number;
+  startedAt: number | null;
+  completedAt: number | null;
+  consecutiveFailures: number;
+}
+
+export interface DagEdge {
+  from: string;
+  to: string;
+}
+
+export interface DagApiResponse {
+  nodes: DagNode[];
+  edges: DagEdge[];
+  meta: {
+    totalTasks: number;
+    doneCount: number;
+    runningCount: number;
+    blockedCount: number;
+    stuckCount: number;
+  };
+}
+
+// ── Cost Estimation ─────────────────────────────────────────────────────
+
+export interface CostAgentEntry {
+  agent: AgentId;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costToday: number;
+  cost7d: number;
+}
+
+export interface CostAggregate {
+  costToday: number;
+  costWeek: number;
+  trend7d: number[];
+}
+
+export interface CostApiResponse {
+  agents: CostAgentEntry[];
+  aggregate: CostAggregate;
+}
+
+// ── Crash Notifications (Phase D.2) ────────────────────────────────────────
+
+export interface CrashNotificationEntry {
+  ts: number;
+  title: string;
+  body: string;
 }

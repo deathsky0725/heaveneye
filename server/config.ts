@@ -9,6 +9,9 @@ const REAL_HOME = process.env.HERMES_HOME
 
 export const PORT = 7878;
 
+const KANBAN_BOARD = 'heaveneye-ui';
+export const KANBAN_DB_PATH = (() => join(REAL_HOME, '.hermes', 'kanban', 'boards', KANBAN_BOARD, 'kanban.db'))();
+
 export const HOME = REAL_HOME;
 
 export const HERMES_STATUS_PATH = join(

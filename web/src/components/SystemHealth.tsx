@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../store';
+import { GatewayButton } from './GatewayButton';
 
 const PROFILE_LABEL: Record<string, string> = {
   anmaioyi: 'เมี่ยวอี',
@@ -29,6 +30,7 @@ export function SystemHealth() {
   }
 
   const downCount = health.gateways.filter((g) => !g.alive).length;
+  const upCount = health.gateways.filter((g) => g.alive).length;
   const allHealthy = downCount === 0;
 
   return (
@@ -41,7 +43,9 @@ export function SystemHealth() {
         >
           <span className={`w-2 h-2 rounded-full ${allHealthy ? 'bg-emerald-400' : 'bg-rose-500 animate-pulse'}`} />
           <span className="font-medium text-slate-200 shrink-0">
-            {allHealthy ? 'All gateways healthy' : `${downCount} gateway down`}
+            {allHealthy
+              ? 'All gateways healthy'
+              : `${upCount} up · ${downCount} down`}
           </span>
           <div className="flex items-center gap-1 flex-wrap ml-2">
             {health.gateways.map((g) => (
@@ -71,14 +75,29 @@ export function SystemHealth() {
                     {g.alive ? 'alive' : 'down'}
                   </span>
                 </div>
-                <div className="text-[10px] text-slate-400 font-mono">
+                <div className="text-[10px] text-slate-400 font-mono mb-2">
                   {g.alive ? (
                     <>
                       pid {g.pid}<br />
-                      up {uptimeStr(g.startedAt)}
+                      up {uptimeStr(g.startedAt)}<br />
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <span className="w-8">CPU:</span>
+                        <div className="flex-1 bg-slate-700 h-1 rounded overflow-hidden">
+                          <div className="bg-blue-400 h-full transition-all duration-300" style={{ width: `${Math.min(100, g.cpuPercent ?? 0)}%` }} />
+                        </div>
+                        <span className="w-8 text-right font-semibold text-blue-300">{(g.cpuPercent ?? 0).toFixed(0)}%</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="w-8">RAM:</span>
+                        <div className="flex-1 bg-slate-700 h-1 rounded overflow-hidden">
+                          <div className="bg-emerald-400 h-full transition-all duration-300" style={{ width: `${Math.min(100, ((g.ramBytes ?? 0) / (256 * 1024 * 1024)) * 100)}%` }} />
+                        </div>
+                        <span className="w-14 text-right font-semibold text-emerald-300">{((g.ramBytes ?? 0) / (1024 * 1024)).toFixed(0)} MB</span>
+                      </div>
                     </>
                   ) : 'no process found'}
                 </div>
+                <GatewayButton profile={g.profile} />
               </div>
             ))}
           </div>

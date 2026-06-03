@@ -16,6 +16,7 @@ build/
 
 # Logs
 *.log
+result.events.log
 npm-debug.log*
 /tmp/heaveneye.log
 
@@ -41,3 +42,16 @@ coverage/
 # Misc
 *.tmp
 *.bak
+
+# Heaveneye runtime config (contains Discord webhook URL)
+.heaveneye/discord.json
+
+# Character asset pipeline — keep PROMPTS.md + final sprites, ignore raw/intermediate
+asset-raw/*.jpeg
+asset-raw/*.jpg
+asset-raw/_cut/
+asset-raw/
+orchestration/
+kanban.db
+heaveneye.db
+*.db

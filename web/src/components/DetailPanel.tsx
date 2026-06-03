@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { motion } from 'motion/react';
 import type { AgentId, AgentSnapshot, AgentStatus, NotificationEntry, RelayStatus } from '../types';
 import { useStore } from '../store';
 import { StatChart } from './StatChart';
@@ -61,6 +62,11 @@ function formatToken(n: number): string {
 }
 
 export function DetailPanel() {
+  const prefersReducedMotion = (() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  })();
+
   const detailPanelId = useStore((s) => s.detailPanelId);
   const closeDetailPanel = useStore((s) => s.closeDetailPanel);
   const agents = useStore((s) => s.agents);
@@ -69,6 +75,7 @@ export function DetailPanel() {
   const [data, setData] = useState<DetailData | null>(null);
   const [relayStatus, setRelayStatus] = useState<RelayStatus | null>(null);
   const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
+  const [heatmapData, setHeatmapData] = useState<Array<{ date: string; count: number }> | null>(null);
   const [loading, setLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -87,12 +94,14 @@ export function DetailPanel() {
       setData(null);
       setRelayStatus(null);
       setNotifications([]);
+      setHeatmapData(null);
       return;
     }
     setLoading(true);
     setData(null);
     setRelayStatus(null);
     setNotifications([]);
+    setHeatmapData(null);
     const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
     fetch(`${base}/api/agent/${detailPanelId}/detail`)
       .then((r) => r.json())
@@ -105,6 +114,10 @@ export function DetailPanel() {
     fetch(`${base}/api/notifications?limit=5`)
       .then((r) => r.json())
       .then((entries: NotificationEntry[]) => setNotifications(entries.filter((n) => n.agent === detailPanelId)))
+      .catch(() => {});
+    fetch(`${base}/api/agent/${detailPanelId}/activity-heatmap`)
+      .then((r) => r.json())
+      .then((d: { heatmap: Array<{ date: string; count: number }> }) => setHeatmapData(d.heatmap))
       .catch(() => {});
   }, [detailPanelId]);
 
@@ -120,188 +133,258 @@ export function DetailPanel() {
   const sortedTools = data ? [...data.toolBreakdown].sort((a, b) => b.count - a.count) : [];
   const maxCount = sortedTools[0]?.count ?? 1;
 
+  const panelContent = (
+    <>
+      {/* Header */}
+      <div className="flex items-start gap-3 p-5 border-b border-white/10">
+        {agent && (
+          <>
+            <RiveAvatar id={agent.id} status={agent.status} color={agent.color} size="md" />
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-semibold truncate" style={{ color: agent.color }}>{agent.name}</h2>
+              <div className="flex items-center gap-2 mt-1">
+                <span className={`w-2 h-2 rounded-full ${STATUS_DOT[agent.status]}`} />
+                <span className="text-sm text-slate-200">{STATUS_LABEL[agent.status]}</span>
+              </div>
+              {agent.currentModel && (
+                <p className="text-xs text-slate-400 mt-0.5">model: {agent.currentModel}</p>
+              )}
+            </div>
+          </>
+        )}
+        <button
+          onClick={closeDetailPanel}
+          className="shrink-0 text-slate-400 hover:text-white transition-colors text-xl leading-none p-1"
+          aria-label="Close panel"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto">
+        {loading && (
+          <div className="p-5 text-sm text-slate-500">กำลังโหลด...</div>
+        )}
+        {!loading && !data && detailPanelId && (
+          <div className="p-5 text-sm text-slate-500">ไม่มีข้อมูล agent</div>
+        )}
+        {!loading && data && (
+          <>
+            {/* Section 1: Tool usage (24h) */}
+            <div className="px-5 py-4 border-b border-white/5">
+              <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">เครื่องมือ (24h)</h3>
+              {sortedTools.length === 0 ? (
+                <p className="text-xs text-slate-600">ไม่มีข้อมูล</p>
+              ) : (
+                <div className="space-y-2">
+                  {sortedTools.map(({ tool, count }) => (
+                    <div key={tool} className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 w-20 truncate font-mono">{tool}</span>
+                      <div className="flex-1 h-2 rounded-full bg-white/5 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-indigo-500"
+                          style={{ width: `${(count / maxCount) * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-slate-400 w-8 text-right">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+ 
+            {/* Agent Productivity Heatmap (30d) */}
+            <div className="px-5 py-4 border-b border-white/5">
+              <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3 flex items-center justify-between">
+                <span>ประสิทธิภาพการทำงาน (30 วัน)</span>
+                {heatmapData && (
+                  <span className="text-[10px] text-slate-400 normal-case font-mono">
+                    {heatmapData.reduce((acc, curr) => acc + curr.count, 0)} actions
+                  </span>
+                )}
+              </h3>
+              {!heatmapData ? (
+                <p className="text-xs text-slate-600">กำลังโหลด...</p>
+              ) : (
+                <div>
+                  <div className="flex flex-wrap gap-1.5 justify-center py-2 bg-slate-950/40 rounded-lg p-3 border border-white/5">
+                    {heatmapData.map((d) => {
+                      let colorClass = 'bg-slate-800/80 hover:bg-slate-700';
+                      if (d.count > 0 && d.count <= 2) {
+                        colorClass = 'bg-emerald-950/80 text-emerald-400 border border-emerald-900/30';
+                      } else if (d.count > 2 && d.count <= 5) {
+                        colorClass = 'bg-emerald-800 text-emerald-200 border border-emerald-700/50';
+                      } else if (d.count > 5 && d.count <= 9) {
+                        colorClass = 'bg-emerald-500 text-white border border-emerald-400/50';
+                      } else if (d.count > 9) {
+                        colorClass = 'bg-emerald-300 text-emerald-950 border border-emerald-200/50';
+                      }
+
+                      return (
+                        <div
+                          key={d.date}
+                          className={`w-7 h-7 rounded flex items-center justify-center text-[10px] font-mono font-semibold transition-all duration-200 hover:scale-110 cursor-help ${colorClass}`}
+                          title={`${d.date}: ${d.count} actions`}
+                        >
+                          {d.count > 0 ? d.count : ''}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center justify-end gap-1.5 mt-2 text-[10px] text-slate-500 font-mono">
+                    <span>Less</span>
+                    <span className="w-3 h-3 rounded bg-slate-800 border border-white/5" />
+                    <span className="w-3 h-3 rounded bg-emerald-950/80 border border-emerald-900/30" />
+                    <span className="w-3 h-3 rounded bg-emerald-800 border border-emerald-700/50" />
+                    <span className="w-3 h-3 rounded bg-emerald-500 border border-emerald-400/50" />
+                    <span className="w-3 h-3 rounded bg-emerald-300 border border-emerald-200/50" />
+                    <span>More</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Section 2: Session timeline */}
+            <div className="px-5 py-4 border-b border-white/5">
+              <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">Session timeline</h3>
+              {data.sessionTimeline.length === 0 ? (
+                <p className="text-xs text-slate-600">ไม่มี session</p>
+              ) : (
+                <div className="space-y-2">
+                  {data.sessionTimeline.map((s) => (
+                    <div key={s.session_id} className="text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-300 font-mono">{s.session_id.slice(0, 8)}</span>
+                        <span className="text-slate-500">{relativeTime(s.start_ts)}</span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-0.5 text-slate-500">
+                        <span>dur: {sessionDuration(s.start_ts, s.end_ts)}</span>
+                        <span>tokens: {formatToken(s.total_tokens)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* StatChart 24h */}
+              <div className="mt-4">
+                {detailPanelId && <StatChart agentId={detailPanelId} compact />}
+              </div>
+            </div>
+
+            {/* Section 3: Current session */}
+            <div className="px-5 py-4 border-b border-white/5">
+              <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">Current session</h3>
+              {data.currentSession ? (
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">session</span>
+                    <span className="text-slate-300 font-mono">{data.currentSession.session_id.slice(0, 8)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">started</span>
+                    <span className="text-slate-300">{relativeTime(data.currentSession.started_at)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">events</span>
+                    <span className="text-slate-300">{data.currentSession.events_count}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">tokens so far</span>
+                    <span className="text-slate-300">{formatToken(data.currentSession.tokens_so_far)}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-600">ไม่มี session ที่กำลังทำงาน</p>
+              )}
+            </div>
+
+            {/* Section 4: Notification Log */}
+            <div className="px-5 py-4">
+              <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">Notification Log</h3>
+              {notifications.length === 0 ? (
+                <p className="text-xs text-slate-600">ไม่มี notification</p>
+              ) : (
+                <div className="space-y-2">
+                  {notifications.map((n) => (
+                    <div key={n.id} className="flex items-start gap-2 text-xs">
+                      <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 mt-1" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-slate-300 truncate">
+                            {n.task_title ?? n.task_id}
+                          </span>
+                          <span className="text-slate-500 shrink-0">{relativeTime(n.ts)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-slate-500">
+                          <span className="truncate">→ {n.chat_id}</span>
+                          <span className="text-slate-600">·</span>
+                          <span className="text-indigo-400">{n.event_kind}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Section 5: Relay / HM2 Report Status */}
+            {relayStatus && (
+              <div className="px-5 py-4">
+                <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">Relay / HM2 Report</h3>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">pending report</span>
+                    <span className={relayStatus.hasPendingReport ? 'text-amber-400' : 'text-emerald-400'}>
+                      {relayStatus.hasPendingReport ? '● รอส่ง' : '✓ ไม่มี'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">last relay</span>
+                    <span className="text-slate-300">
+                      {relayStatus.lastRelayTime ? relativeTime(relayStatus.lastRelayTime) : '—'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">relay วันนี้</span>
+                    <span className="text-slate-300">{relayStatus.relayCount}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </>
+  );
+
   return (
     // Backdrop
     <div
       className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
       onClick={handleBackdropClick}
     >
-      {/* Panel */}
-      <div
-        ref={panelRef}
-        className="absolute top-0 right-0 h-full w-96 max-w-full bg-[#0f1117] border-l border-white/10 shadow-2xl flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-start gap-3 p-5 border-b border-white/10">
-          {agent && (
-            <>
-              <RiveAvatar id={agent.id} status={agent.status} color={agent.color} size="md" />
-              <div className="flex-1 min-w-0">
-                <h2 className="text-lg font-semibold truncate" style={{ color: agent.color }}>{agent.name}</h2>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`w-2 h-2 rounded-full ${STATUS_DOT[agent.status]}`} />
-                  <span className="text-sm text-slate-200">{STATUS_LABEL[agent.status]}</span>
-                </div>
-                {agent.currentModel && (
-                  <p className="text-xs text-slate-400 mt-0.5">model: {agent.currentModel}</p>
-                )}
-              </div>
-            </>
-          )}
-          <button
-            onClick={closeDetailPanel}
-            className="shrink-0 text-slate-400 hover:text-white transition-colors text-xl leading-none p-1"
-            aria-label="Close panel"
-          >
-            ×
-          </button>
+      {prefersReducedMotion ? (
+        <div
+          ref={panelRef}
+          className="absolute top-0 right-0 h-full w-96 max-w-full bg-[#0f1117] border-l border-white/10 shadow-2xl flex flex-col overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {panelContent}
         </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto">
-          {loading && (
-            <div className="p-5 text-sm text-slate-500">กำลังโหลด...</div>
-          )}
-          {!loading && !data && detailPanelId && (
-            <div className="p-5 text-sm text-slate-500">ไม่มีข้อมูล agent</div>
-          )}
-          {!loading && data && (
-            <>
-              {/* Section 1: Tool usage (24h) */}
-              <div className="px-5 py-4 border-b border-white/5">
-                <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">เครื่องมือ (24h)</h3>
-                {sortedTools.length === 0 ? (
-                  <p className="text-xs text-slate-600">ไม่มีข้อมูล</p>
-                ) : (
-                  <div className="space-y-2">
-                    {sortedTools.map(({ tool, count }) => (
-                      <div key={tool} className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400 w-20 truncate font-mono">{tool}</span>
-                        <div className="flex-1 h-2 rounded-full bg-white/5 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-indigo-500"
-                            style={{ width: `${(count / maxCount) * 100}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-slate-400 w-8 text-right">{count}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Section 2: Session timeline */}
-              <div className="px-5 py-4 border-b border-white/5">
-                <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">Session timeline</h3>
-                {data.sessionTimeline.length === 0 ? (
-                  <p className="text-xs text-slate-600">ไม่มี session</p>
-                ) : (
-                  <div className="space-y-2">
-                    {data.sessionTimeline.map((s) => (
-                      <div key={s.session_id} className="text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-300 font-mono">{s.session_id.slice(0, 8)}</span>
-                          <span className="text-slate-500">{relativeTime(s.start_ts)}</span>
-                        </div>
-                        <div className="flex items-center gap-3 mt-0.5 text-slate-500">
-                          <span>dur: {sessionDuration(s.start_ts, s.end_ts)}</span>
-                          <span>tokens: {formatToken(s.total_tokens)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* StatChart 24h */}
-                <div className="mt-4">
-                  {detailPanelId && <StatChart agentId={detailPanelId} compact />}
-                </div>
-              </div>
-
-              {/* Section 3: Current session */}
-              <div className="px-5 py-4 border-b border-white/5">
-                <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">Current session</h3>
-                {data.currentSession ? (
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">session</span>
-                      <span className="text-slate-300 font-mono">{data.currentSession.session_id.slice(0, 8)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">started</span>
-                      <span className="text-slate-300">{relativeTime(data.currentSession.started_at)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">events</span>
-                      <span className="text-slate-300">{data.currentSession.events_count}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">tokens so far</span>
-                      <span className="text-slate-300">{formatToken(data.currentSession.tokens_so_far)}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-600">ไม่มี session ที่กำลังทำงาน</p>
-                )}
-              </div>
-
-              {/* Section 4: Notification Log */}
-              <div className="px-5 py-4">
-                <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">Notification Log</h3>
-                {notifications.length === 0 ? (
-                  <p className="text-xs text-slate-600">ไม่มี notification</p>
-                ) : (
-                  <div className="space-y-2">
-                    {notifications.map((n) => (
-                      <div key={n.id} className="flex items-start gap-2 text-xs">
-                        <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 mt-1" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-slate-300 truncate">
-                              {n.task_title ?? n.task_id}
-                            </span>
-                            <span className="text-slate-500 shrink-0">{relativeTime(n.ts)}</span>
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5 text-slate-500">
-                            <span className="truncate">→ {n.chat_id}</span>
-                            <span className="text-slate-600">·</span>
-                            <span className="text-indigo-400">{n.event_kind}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Section 5: Relay / HM2 Report Status */}
-              {relayStatus && (
-                <div className="px-5 py-4">
-                  <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">Relay / HM2 Report</h3>
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">pending report</span>
-                      <span className={relayStatus.hasPendingReport ? 'text-amber-400' : 'text-emerald-400'}>
-                        {relayStatus.hasPendingReport ? '● รอส่ง' : '✓ ไม่มี'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">last relay</span>
-                      <span className="text-slate-300">
-                        {relayStatus.lastRelayTime ? relativeTime(relayStatus.lastRelayTime) : '—'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">relay วันนี้</span>
-                      <span className="text-slate-300">{relayStatus.relayCount}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+      ) : (
+        <motion.div
+          initial={{ x: '100%', opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          exit={{ x: '100%', opacity: 0 }}
+          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+          ref={panelRef}
+          className="absolute top-0 right-0 h-full w-96 max-w-full bg-[#0f1117] border-l border-white/10 shadow-2xl flex flex-col overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {panelContent}
+        </motion.div>
+      )}
     </div>
   );
 }

@@ -59,6 +59,8 @@ export interface GatewayHealth {
   startedAt: string | null;   // ISO8601 — process lstart
   alive: boolean;
   lastCheckedAt: string;       // ISO8601 — when this status was sampled
+  cpuPercent?: number | null;
+  ramBytes?: number | null;
 }
 
 export interface SystemHealth {
@@ -77,4 +79,10 @@ export interface NotificationEntry {
   event_kind: string;
   agent: AgentId;
   message: string;     // simulated Discord embed text
+}
+
+export interface CrashNotificationEntry {
+  ts: number;    // Unix ms timestamp
+  title: string;
+  body: string;
 }

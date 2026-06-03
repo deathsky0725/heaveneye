@@ -6,6 +6,66 @@ import { RiveAvatar } from './RiveAvatar';
 import { IsoDesk } from './IsoDesk';
 import { isoProject, depthZ, depthZFromCoords, ISO_GRID, GRID_SIZE, AUTO_FIT } from '../lib/iso';
 
+// ─── B1.5 — Room zone overlay (3 large iso diamonds) ────────────────────────
+// Each zone covers the iso tile range that holds its agents.  Rendered as
+// a single SVG polygon (one per zone) BEHIND the floor tiles, so the
+// checkerboard tile pattern shows on top while the zone colour tints the
+// underlying area.  Zones are defined in grid coords (col,row) and the
+// diamond vertices are the four corner tiles of each zone's bbox — using
+// tile corners (not centers) so adjacent zones share edges without gaps.
+//
+// Layout (from ISO_GRID):
+//   - Core Room  : ziyue at (2,0). Zone covers col 1..3, row 0..1.
+//   - Review Bay : anmaioyi at (2,2). Zone covers col 1..3, row 1..3.
+//   - Developer  : wenshu/yanxin/jianfeng/shihao/yefan at row 4.
+//                  Zone covers col 0..4, row 3..4.
+// Colour choices:
+//   - Core   = indigo  (matches the room's strategic / top-of-tree vibe)
+//   - Review = cyan    (anmaioyi's role; reflects "review/check" cyan accent)
+//   - Dev    = emerald (matches the working-status border colour, ties the
+//                        zone visually to "agents actively working")
+// B1.5 — each zone also gets a thin stroke + a soft top-edge label so
+// the boundary reads as an "office floor" not just a coloured shape.
+const ROOM_ZONES = [
+  {
+    name: 'Core Room',
+    color: '99, 102, 241', // indigo-500
+    bbox: { colMin: 1, colMax: 3, rowMin: 0, rowMax: 1 },
+  },
+  {
+    name: 'Review Bay',
+    color: '34, 211, 238', // cyan-400
+    bbox: { colMin: 1, colMax: 3, rowMin: 1, rowMax: 3 },
+  },
+  {
+    name: 'Developer Bay',
+    color: '16, 185, 129', // emerald-500
+    bbox: { colMin: 0, colMax: 4, rowMin: 3, rowMax: 4 },
+  },
+] as const;
+
+/**
+ * The four "corner tiles" of a rectangular grid bbox project to a single
+ * large iso diamond on screen.  Returns the diamond's 4 vertices in the
+ * viewBox 0..100 space (so they line up with the diamond floor tiles,
+ * which use the same isoProject function).  We use the bbox corner tiles
+ * — not the agent tiles — so the zone fully covers its area, including
+ * the unoccupied floor around the agent.
+ */
+function zoneDiamond(bbox: { colMin: number; colMax: number; rowMin: number; rowMax: number }) {
+  // The 4 corners of the bbox (col,row):
+  //   (colMin, rowMin) — top corner
+  //   (colMax, rowMin) — right corner
+  //   (colMax, rowMax) — bottom corner
+  //   (colMin, rowMax) — left corner
+  return {
+    top:    isoProject(bbox.colMin, bbox.rowMin),
+    right:  isoProject(bbox.colMax, bbox.rowMin),
+    bottom: isoProject(bbox.colMax, bbox.rowMax),
+    left:   isoProject(bbox.colMin, bbox.rowMax),
+  };
+}
+
 // Status-aware speech bubble copy (พูดเองได้ ฟีลมีชีวิต)
 const SPEECH_LINES: Partial<Record<AgentStatus, string[]>> = {
   done:    ['เสร็จแล้วค่ะ!', 'ส่งงานนะ!', 'ตรวจให้ที!', 'จบงานละ ✓'],
@@ -275,6 +335,55 @@ export function OfficeMap() {
         })}
       </svg>
 
+      {/* B1.5 — Room zone overlay. Three large iso diamonds tinted with
+          the room colour.  Drawn BEHIND the floor tiles so the
+          checkerboard tile pattern shows on top while the zone colour
+          tints the underlying area.  Each zone is a single SVG polygon
+          (4 vertices from the bbox corner tiles) — no DOM-tile fan-out
+          so the cost stays constant regardless of grid size.
+          Depth z-order: the top zone (Core) renders first, the bottom
+          zone (Developer) renders last so it sits visually closer
+          (matches the floor's depth-z "lower = closer" rule). */}
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        {ROOM_ZONES.map((zone) => {
+          const d = zoneDiamond(zone.bbox);
+          const pts = `${d.top.x},${d.top.y} ${d.right.x},${d.right.y} ${d.bottom.x},${d.bottom.y} ${d.left.x},${d.left.y}`;
+          // Compute a soft top-edge label position (midpoint of the
+          // zone's top edge, slightly above the diamond's top corner).
+          const labelX = (d.top.x + d.right.x) / 2;
+          const labelY = d.top.y - 0.5;
+          return (
+            <g key={`zone-${zone.name}`}>
+              <polygon
+                points={pts}
+                fill={`rgba(${zone.color}, 0.10)`}
+                stroke={`rgba(${zone.color}, 0.45)`}
+                strokeWidth={0.12}
+                strokeDasharray="0.4 0.3"
+                strokeLinejoin="round"
+              />
+              <text
+                x={labelX}
+                y={labelY}
+                textAnchor="middle"
+                fontSize={1.2}
+                fontWeight={600}
+                letterSpacing="0.4"
+                fill={`rgba(${zone.color}, 0.75)`}
+                style={{ textTransform: 'uppercase' }}
+              >
+                {zone.name}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
       {/* Diamond floor — render BEFORE desks/avatars so agents sit on top. */}
       {/* Each tile is a div rotated 45° + scaleY 0.5 to become a diamond.   */}
       {/* Width/height in % = 2*AUTO_FIT.Sx / 2*AUTO_FIT.Sy to cover the iso tile area.
@@ -401,7 +510,18 @@ export function OfficeMap() {
                 className="flex flex-col items-center cursor-pointer group"
                 style={{ transformOrigin: '50% 100%' }}
                 onClick={() => openDetailPanel(agent.id)}
+                /* B1.5 — hover state lives on the wrapper so the inner
+                    avatar/label can react via group-hover (CSS) while
+                    the motion waddle still drives rotate/y. The raise
+                    itself rides on a separate inner motion.div that
+                    applies y ONLY when hovered, so it composes with
+                    (never fights) the outer waddle y. */
               >
+                <motion.div
+                  className="flex flex-col items-center"
+                  whileHover={{ y: -2.5 }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 18 }}
+                >
               {/* 💭 Thought bubble while thinking (idle conversation) */}
               <AnimatePresence>
                 {isThinking && !speech && (
@@ -495,12 +615,25 @@ export function OfficeMap() {
               {/* Avatar & ring — core agents (ziyue/anmaioyi) render larger for hierarchy.
                   B1.3 — try sprite PNG first; on 404 the <img> onError flips
                   spriteOk[id] to false and we fall through to the RiveAvatar
-                  emoji renderer. */}
+                  emoji renderer.
+                  B1.5 — replaced group-hover:scale-105 with a status-coloured
+                  ring + 1.04 scale, since the parent motion.div already
+                  raises on hover (whileHover y:-2.5).  The ring colour
+                  matches agent.color so the hover affordance reads as
+                  "this agent is selectable" without competing with the
+                  status border (which already encodes working/done/etc.). */}
               <div
-                className={`rounded-xl bg-slate-900/90 border transition-all duration-300 group-hover:scale-105 ${
+                className={`rounded-xl bg-slate-900/90 border transition-all duration-300 group-hover:scale-[1.04] group-hover:ring-2 group-hover:ring-offset-1 group-hover:ring-offset-slate-950 ${
                   isCore ? 'p-1 ring-1 ring-white/10' : 'p-0.5'
                 } ${STATUS_BORDER[agent.status]}`}
-                style={{ boxShadow: isWaddling ? '0 6px 10px -3px rgba(0,0,0,0.5)' : undefined }}
+                style={{
+                  boxShadow: isWaddling ? '0 6px 10px -3px rgba(0,0,0,0.5)' : undefined,
+                  // B1.5 — hover ring tinted with agent color.  Tailwind
+                  // can't compose dynamic color in ring-* class, so set
+                  // --tw-ring-color inline. group-hover:ring-2 above
+                  // activates the ring; this color overrides the default.
+                  ['--tw-ring-color' as string]: agent.color,
+                } as React.CSSProperties}
               >
                 {spriteOk[agent.id] ? (
                   <img
@@ -543,6 +676,7 @@ export function OfficeMap() {
                   {agent.role}
                 </span>
               </div>
+                </motion.div>
               </motion.div>
             </div>
           </motion.div>

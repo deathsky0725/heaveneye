@@ -8,6 +8,18 @@ const PROFILES_WITH_GATEWAY: AgentId[] = AGENT_IDS.filter(
   (id) => AGENTS[id].team === 'hermes'
 );
 
+/** When set, the next poll cycle runs immediately instead of waiting POLL_INTERVAL_MS */
+let forceNextPoll = false;
+
+/**
+ * Trigger an immediate gateway health poll + SSE broadcast.
+ * Call this after gateway start/stop so the frontend sees updated
+ * status within ~3s instead of waiting for the next 30s poll.
+ */
+export function triggerGatewayRefresh(): void {
+  forceNextPoll = true;
+}
+
 interface ProcInfo {
   pid: number;
   lstart: string;
@@ -31,19 +43,44 @@ function ps(filter: string): Promise<ProcInfo[]> {
   });
 }
 
+function getProcessResources(pid: number): Promise<{ cpu: number; ram: number }> {
+  return new Promise((resolve) => {
+    const proc = spawn('ps', ['-p', String(pid), '-o', '%cpu,rss']);
+    let out = '';
+    proc.stdout.on('data', (b) => { out += b.toString(); });
+    proc.on('close', () => {
+      const lines = out.split('\n').filter((l) => l.trim());
+      if (lines.length < 2) {
+        resolve({ cpu: 0, ram: 0 });
+        return;
+      }
+      const valuesLine = lines[1] ?? '';
+      const parts = valuesLine.trim().split(/\s+/);
+      const cpu = parseFloat(parts[0] || '0');
+      const rssKb = parseInt(parts[1] || '0', 10);
+      const ram = rssKb * 1024; // Convert KB to bytes
+      resolve({ cpu: isNaN(cpu) ? 0 : cpu, ram: isNaN(ram) ? 0 : ram });
+    });
+    proc.on('error', () => resolve({ cpu: 0, ram: 0 }));
+  });
+}
+
 async function checkGateway(profile: AgentId): Promise<GatewayHealth> {
   const now = new Date().toISOString();
   const procs = await ps(`--profile ${profile} gateway run`);
   if (procs.length === 0) {
-    return { profile, pid: null, startedAt: null, alive: false, lastCheckedAt: now };
+    return { profile, pid: null, startedAt: null, alive: false, lastCheckedAt: now, cpuPercent: 0, ramBytes: 0 };
   }
   const p = procs[0]!;
+  const stats = await getProcessResources(p.pid);
   return {
     profile,
     pid: p.pid,
     startedAt: p.lstart,
     alive: true,
     lastCheckedAt: now,
+    cpuPercent: stats.cpu,
+    ramBytes: stats.ram,
   };
 }
 
@@ -51,6 +88,10 @@ export async function startSystemHealthWatcher() {
   console.log('[system-health] starting (poll every', POLL_INTERVAL_MS / 1000, 's)');
 
   const poll = async () => {
+    // Drain the immediate-trigger flag so this poll only fires once per trigger
+    if (forceNextPoll) {
+      forceNextPoll = false;
+    }
     try {
       const gateways = await Promise.all(PROFILES_WITH_GATEWAY.map(checkGateway));
       const health: SystemHealth = {
@@ -63,8 +104,21 @@ export async function startSystemHealthWatcher() {
     }
   };
 
-  // initial + interval
+  // initial + interval; forceNextPoll is reset inside poll() so
+  // a call to triggerGatewayRefresh() causes the next tick to fire immediately.
+  let timer: ReturnType<typeof setTimeout>;
+  const scheduleNext = () => {
+    timer = setTimeout(async () => {
+      await poll();
+      // After every scheduled poll, check if an immediate refresh was requested
+      if (forceNextPoll) {
+        forceNextPoll = false;
+        await poll();
+      }
+      scheduleNext();
+    }, POLL_INTERVAL_MS);
+  };
   await poll();
-  const timer = setInterval(poll, POLL_INTERVAL_MS);
-  return () => clearInterval(timer);
+  scheduleNext();
+  return () => clearTimeout(timer);
 }

@@ -1,222 +1,184 @@
-# 👁️ heaveneye — Plan
+# 👁️ Heaveneye — Plan
 
-> **ตาสวรรค์** — Real-time dashboard ที่มองเห็นทุก agent ในทีมพร้อมกัน บอกว่าใครทำอะไร ใช้ token ไปเท่าไหร่
-> Author: จื่อเยว่ · For review: พี่เบญ · Date: 2026-05-15
-
----
-
-## 1. เป้าหมาย
-
-เปิดมาแล้วเห็นทันทีว่า:
-1. **ใคร** กำลังทำงาน (จื่อเยว่ / เมี่ยวอี / เหวินซู / เหยียนซิน / เจี้ยนเฟิง)
-2. **ทำอะไร** (task title + tool ล่าสุดที่เรียก)
-3. **สถานะ** (idle / thinking / working / done / failed)
-4. **Token usage** สะสมวันนี้ ต่อคน
-
-เปิดเอง manual ตอนพี่เบญอยากดู (ไม่ auto-start), local-only ไม่ผูก cloud
+> **Pivot 2026-05-23:** กลับมา view-only monitoring dashboard. Chat/spawn UI ถูกถอดออกหลังเจอข้อจำกัด CLI tools (claude/agy/hermes) ที่ไม่เหมาะกับ web orchestration. ดู `result.md` สำหรับสิ่งที่ ship แล้ว และ `PROGRESS.md` สำหรับสถานะปัจจุบัน
 
 ---
 
-## 2. แหล่งข้อมูล
+## 1. เจตนา (post-pivot)
 
-| Source | Path | ให้อะไร |
-|---|---|---|
-| **Hermes events** | `Projects/yt-deathskylife/orchestration/status.jsonl` | "ใคร กำลังทำ task ไหน" (semantic) |
-| **Claude transcripts** | `~/.claude/projects/**/*.jsonl` | token usage + tool calls (mechanical) |
-| **Task specs** | `Projects/yt-deathskylife/orchestration/tasks/*.task.md` | รายละเอียด task (อ่านเพิ่ม on-demand) |
+**Heaveneye = view-only dashboard** สำหรับมอนิเตอร์ Hermes agents (ziyue + anmaioyi + 5 specialists). พี่เบญใช้ดูว่าใครทำอะไรอยู่, RAM พอไหม, มี block ค้างมั้ย, token usage วันนี้เท่าไหร่.
 
-### Event schema ของ Hermes (ที่เห็นจริง)
-```json
-{"ts":"2026-05-14T21:39:00Z","agent":"anmaioyi","task_id":"t_cc51f087","event":"completed","payload":{...}}
-```
-- `event` ที่พบ: `completed`, `decomposed`
-- คาดว่ามีเพิ่ม: `claimed`, `started`, `failed`, `plan_updated` (ตาม persona doc)
+**สั่งงาน agent จริง:**
+- คุยกับ Ji-Ziyue (เลขา) → Claude Code CLI โดยตรง
+- สั่ง Hermes Lead/specialists → `hermes kanban create` / Discord channel
+- ใช้ Antigravity → `agy` CLI ใน terminal
 
-### Claude transcript schema (ที่ใช้)
-แต่ละ line คือ message; อ่านเฉพาะ `type: "assistant"` ที่มี `message.usage`:
-```json
-{"type":"assistant","timestamp":"...","sessionId":"...","cwd":"...",
- "message":{"usage":{"input_tokens":N,"output_tokens":N,
-                    "cache_creation_input_tokens":N,"cache_read_input_tokens":N}}}
-```
-
-### Mapping `agent` → Claude session (จุดที่ยังต้องทดลอง 🟡)
-สมมติฐาน: Hermes spawn `claude` CLI ตอน task เริ่ม — session ที่มี `cwd` ตรงกับ workspace ของ task และอยู่ในช่วงเวลาที่ task active = ของ agent นั้น
-**Phase 1 จัดการแบบ heuristic:** จับคู่ด้วย time window + cwd; ถ้าจับไม่ได้ → แสดง token รวมแยกอีก bucket ชื่อ "unattributed"
+Heaveneye **ไม่พยายามเป็น chat platform** เพราะ CLI tools เหล่านี้ออกแบบมาเพื่อ terminal use ไม่ใช่ web orchestration
 
 ---
 
-## 3. สถาปัตยกรรม
+## 2. Stack ปัจจุบัน
 
-```
-┌──────────────────────────────────────────────────────────┐
-│ Backend (Bun + Hono, port 7878)                          │
-│                                                           │
-│  ┌─────────────┐    ┌──────────────┐    ┌──────────────┐ │
-│  │ status      │    │ transcript   │    │ state        │ │
-│  │ watcher     │───▶│ watcher      │───▶│ engine       │ │
-│  │ (chokidar)  │    │ (chokidar)   │    │ (in-memory)  │ │
-│  └─────────────┘    └──────────────┘    └──────┬───────┘ │
-│                                                 │         │
-│  GET /api/agents (snapshot) ────────────────────┤         │
-│  GET /api/stream (SSE)      ────────────────────┘         │
-└──────────────────────────────────────────────────────────┘
-                            │
-                            ▼ SSE
-┌──────────────────────────────────────────────────────────┐
-│ Frontend (Vite + React + Tailwind + Rive)                │
-│                                                           │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
-│  │ จื่อเยว่ │  │ เมี่ยวอี│  │ เหวินซู │  │ เหยียนซิน│ │
-│  │  [Rive]  │  │  [Rive]  │  │  [Rive]  │  │  [Rive]  │ │
-│  │ 🟢 work  │  │ 🟡 plan  │  │ ⚪ idle  │  │ ⚪ idle  │ │
-│  │ 12.4k tk │  │  8.2k tk │  │   0 tk   │  │   0 tk   │ │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘ │
-└──────────────────────────────────────────────────────────┘
-```
-
-### State machine ของแต่ละ agent
-```
-idle ──claimed──▶ thinking ──tool_use──▶ working ──completed──▶ done ─(60s)─▶ idle
-                       ▲                       │
-                       └──────tool_result──────┘
-                                               
-       └──failed──▶ failed ─(60s)─▶ idle
-```
-- `thinking` = หลัง claim แต่ยังไม่มี tool call (กำลังคิด/อ่าน)
-- `working` = มี tool call ภายใน 10s ล่าสุด
-- `done` = task completed (โชว์ 60s แล้วกลับ idle)
+| Layer | Tech |
+|-------|------|
+| Backend | Bun + Hono :7878 (REST + SSE) |
+| Frontend | React 19 + Zustand + Tailwind 4 + Rive |
+| Watchers | chokidar (status.jsonl, kanban DB, inbox.jsonl, system health) |
+| Native wrap | Tauri 2.0 (tray + hotkey) |
+| Daemons | protocol_guard.py + review_watcher.py (launchd 24/7) |
+| HM2-REPORT | resultMdUpdater + relayCron + Discord webhook |
 
 ---
 
-## 4. Tech stack
+## 3. Backlog — dispatch-ready 4 tasks
 
-| Layer | Choice | Why |
-|---|---|---|
-| Runtime | **Bun** | เร็ว, มี watcher/server/bundler ในตัว, TS native |
-| HTTP | **Hono** | เบา, รองรับ SSE native, dev experience ดี |
-| File watch | **chokidar** | reliable cross-platform, รองรับ glob |
-| Frontend build | **Vite** | HMR เร็ว, config น้อย |
-| UI | **React 18 + Tailwind 4** | คุ้นมือ, ทำการ์ดเร็ว |
-| Character | **`@rive-app/react-canvas`** | state machine + lightweight |
-| State (frontend) | **Zustand** | simple, ไม่ overkill |
+> **กฎ dispatch:** ทำทีละข้อ ตามลำดับ 3.1 → 3.2 → 3.3 → 3.4. ห้ามทำขนาน. ทุก task ji-ziyue audit ก่อน mark done. ห้ามเพิ่ม chat/spawn/WS infra กลับมา (pivot rule)
 
----
+### 3.1 — Kanban event filter ใน TaskFeedSidebar (Worker: shihao, ขนาด: S)
 
-## 5. โครงโฟลเดอร์
+**ไฟล์เดียว:** `web/src/components/TaskFeedSidebar.tsx`
 
-```
-Projects/heaveneye/
-├── plan.md                    ← ไฟล์นี้
-├── README.md                  (เขียนทีหลัง)
-├── package.json
-├── bun.lockb
-├── tsconfig.json
-├── server/
-│   ├── index.ts               (Hono app + SSE)
-│   ├── watchers/
-│   │   ├── hermes.ts          (status.jsonl)
-│   │   └── claude.ts          (~/.claude/projects/**)
-│   ├── state/
-│   │   ├── engine.ts          (event → state)
-│   │   └── types.ts
-│   └── config.ts              (paths, agent roster)
-├── web/
-│   ├── index.html
-│   ├── vite.config.ts
-│   ├── src/
-│   │   ├── main.tsx
-│   │   ├── App.tsx
-│   │   ├── components/
-│   │   │   ├── AgentCard.tsx
-│   │   │   ├── RiveAvatar.tsx
-│   │   │   └── TokenBadge.tsx
-│   │   ├── store.ts           (Zustand + SSE client)
-│   │   └── styles.css
-│   └── public/
-│       └── rive/              (.riv files)
-└── scripts/
-    └── dev.sh                 (รัน server + web พร้อมกัน)
-```
+**ทำ:**
+1. เปลี่ยน `type Filter = 'all' | 'blocks'` → `type Filter = 'all' | KanbanEventEntry['kind']` (8 kinds: claimed/completed/blocked/decomposed/spawned/heartbeat/unblocked + all)
+2. UI: เปลี่ยน chip 2 อัน → chip 8 อัน scrollable horizontal, **single-select** (ไม่ใช่ multi — keep simple)
+3. Filter logic: `if (filter === 'all') return true; return ev.kind === filter;`
+4. Persist filter ใน localStorage key `feedFilter` → load ตอน init
+
+**Acceptance:**
+- คลิก chip "completed" → list filter ลงเฉพาะ completed
+- Refresh browser → chip ที่เลือกล่าสุดยังถูกเลือกอยู่
+- typecheck clean, build pass
+
+**ห้ามทำ:** เพิ่ม multi-select, เพิ่ม dependency ใหม่, แตะไฟล์อื่นนอกจาก TaskFeedSidebar.tsx
 
 ---
 
-## 6. Rive character
+### 3.2 — resultMdUpdater → `result.events.log` (Worker: yefan, ขนาด: S)
 
-### แผน asset
-1. ค้น [rive.app/community](https://rive.app/community) หา character ฟรีที่:
-   - มี state machine `idle / working / happy / sad` (หรือใกล้เคียง)
-   - License อนุญาตใช้ส่วนตัว
-2. ถ้าไม่เจอ character ครบ 5 ตัวที่ต่างกัน → ใช้ตัวเดียวกันแต่ tint สีต่าง (จื่อเยว่ = ชมพู, เมี่ยวอี = ม่วง, เหวินซู = ฟ้า, เหยียนซิน = ส้ม, เจี้ยนเฟิง = เขียว)
-3. Phase 2 ค่อยทำ asset เฉพาะตัวให้แต่ละ persona
+**ไฟล์เดียว:** `server/watchers/resultMdUpdater.ts`
 
-### State inputs ที่ Rive ต้องมี
-- `working` (boolean) — ขยับเร็ว
-- `idle` (boolean) — หายใจช้าๆ
-- `celebrate` (trigger) — เด้งตอน task done
+**ทำ:**
+1. เปลี่ยน target path จาก `result.md` → `result.events.log` (relative to project root เหมือนเดิม)
+2. ถ้า `result.events.log` ไม่มี → create with header `# Heaveneye event log (auto-appended by resultMdUpdater)\n`
+3. Append format เดิม `## [ISO_TS] worker status → task [task_id]\n  - Status:\n  - Task:\n  - Board:\n`
+4. เพิ่ม `result.events.log` เข้า `.gitignore`
 
----
+**Acceptance:**
+- worker complete event เกิด → daemon append entry ลง `result.events.log`
+- `result.md` ไม่ถูก touch (verify: `stat result.md` mtime คงเดิม)
+- `result.events.log` มี header + entries เรียงตามเวลา
+- `.gitignore` มีบรรทัด `result.events.log`
 
-## 7. Phase plan
-
-### Phase 1 — MVP (เป้า: รันได้ เห็น 5 ตัวขยับ จริงตามสถานะ)
-- [ ] 1.1 Scaffold โครงโฟลเดอร์ + Bun init + Vite init
-- [ ] 1.2 Server: Hono + SSE + mock data
-- [ ] 1.3 Frontend: AgentCard + Rive placeholder (emoji ก่อน) + รับ SSE
-- [ ] 1.4 Watcher: parse `status.jsonl` → push event
-- [ ] 1.5 Watcher: parse Claude transcripts → token aggregation ต่อ session
-- [ ] 1.6 State engine: รวม 2 stream เป็น snapshot ต่อ agent
-- [ ] 1.7 หา Rive characters + integrate
-- [ ] 1.8 Polish: layout, สีประจำตัว, transitions
-- [ ] 1.9 README + วิธีรัน
-
-### Phase 2 — Enhancement (ทำเมื่อ Phase 1 stable)
-- [x] รองรับหลาย Hermes board / project (kanban watcher อ่านทุก DB) ✅ 2026-05-16
-- [x] Model indicator ต่อ card (currentModel) ✅ 2026-05-16
-- [x] Board indicator ต่อ card (currentBoard) ✅ 2026-05-16
-- [x] 5-hour usage panel (rolling window per model) ✅ 2026-05-16
-- [ ] **Handoff loop ชั้น 1** — แสดง "needs review / blocked" indicator + reason ใน AgentCard เมื่อ task ของ agent นั้น blocked (เพื่อไม่ให้พี่เบญต้องถามเองว่าใครค้าง)
-- [ ] **Handoff loop ชั้น 2** — Persona rule "ห้าม block เงียบ" + An Maioyi auto-poll children + relay block reason กลับผู้สั่ง
-- [ ] กราฟ token usage รายชั่วโมง / รายวัน
-- [ ] Task history panel (คลิกเปิดดู task ที่ผ่านมา)
-- [ ] Detection จื่อเยว่ vs Hermes team แม่นขึ้น
-- [ ] ส่ง model name ใน api_request ของ kanban worker (ตอนนี้ kanban worker mode ไม่ trigger hook → model ไม่เคยส่ง → UsagePanel แสดงเป็น "Unknown")
-
-### Phase 3 — Nice to have / Backlog
-- [ ] **Handoff loop ชั้น 3 — Auto notification** (กำหนดวันหลัง — ใหญ่กว่าชั้น 1+2)
-  - Heaveneye watcher fire Discord webhook เมื่อมี `blocked`/`crashed`/`timed_out` event บน kanban
-  - หรือ trigger จื่อเยว่ CLI prompt อัตโนมัติ ("task X blocked — please review") เพื่อสร้าง feedback loop จริงตอน user ไม่อยู่หน้า dashboard
-  - เป้าหมาย: ระบบ self-heal — user ไม่ต้องโผล่หน้าจอเองจะรู้ทุกครั้งที่ทีมต้องการความช่วยเหลือ
-- [ ] **Token tracking สำหรับ kanban-worker sessions** — ตอนนี้ workers ไม่ fire hook → token ไม่เข้า dashboard. ทางเลือก: อ่าน session JSON (`~/.hermes/profiles/<name>/sessions/*.json`) หรือ patch Hermes ให้ fire hook
-- [ ] Custom Rive asset เฉพาะตัวให้แต่ละ persona
-- [ ] Sound effect (เบาๆ ตอน complete)
-- [ ] Dark/light mode
+**ห้ามทำ:** ลบ result.md, แตะไฟล์ daemon อื่น, เพิ่ม dep
 
 ---
 
-## 8. ความเสี่ยงและสมมติฐาน
+### 3.3 — StatChart time window (Worker: yefan backend + shihao frontend, ขนาด: M)
 
-| ความเสี่ยง | วิธีรับมือ |
-|---|---|
-| Map agent → Claude session ไม่แม่น | Phase 1 ใช้ heuristic + show "unattributed" bucket; Phase 2 หาวิธีแม่นขึ้น (env var, marker file, etc.) |
-| Hermes ยังมี event ไม่ครบ (เห็นแค่ `completed` กับ `decomposed`) | State engine handle event ที่ไม่รู้จัก = noop; เพิ่ม event ใหม่ได้ทีหลัง |
-| Rive character ฟรีคุณภาพไม่ดี | Fallback ใช้ emoji + CSS animation; พี่เบญตัดสินใจอีกที |
-| status.jsonl โต/หมุน | Phase 1 อ่านครั้งเดียวตอน start + tail ใหม่ — โอเคถ้าไฟล์ไม่ใหญ่มาก |
-| Claude transcripts ใหญ่มาก (หลายร้อย MB) | อ่านเฉพาะไฟล์ที่ mtime > 24h + parse แบบ streaming |
+**Backend:** `server/state/engine.ts` (+ index.ts endpoint)
+1. ตรวจว่า engine state มี usage data ย้อนหลังเก็บไว้กี่วัน — ดู `state.getUsage24h()` implementation
+2. ถ้าเก็บแค่ 24h → ต้องเพิ่ม persistence layer (อาจ daily aggregate file `~/.heaveneye/usage/<agent>-<YYYY-MM-DD>.json`)
+3. เพิ่ม endpoint: `GET /api/usage?agent=X&window=24h|7d|30d` → bucket count = 24 / 7 / 30
+4. ถ้า window=24h: keep existing behavior; 7d/30d: aggregate by day
+
+**Frontend:** `web/src/components/StatChart.tsx`
+1. เพิ่ม dropdown 24h/7d/30d ใน header
+2. เปลี่ยน fetch URL ตาม window
+3. Chart label เปลี่ยนตาม (hourly vs daily)
+
+**Acceptance:**
+- เลือก 24h → 24 bars (เหมือนเดิม)
+- เลือก 7d → 7 bars แสดงรายวัน
+- เลือก 30d → 30 bars
+- ถ้าไม่มี data เก่าพอ → เห็น empty bars (ไม่ crash)
+- typecheck + build pass
+
+**⚠️ Risk:** ถ้า engine ไม่เก็บข้อมูลเก่า → yefan ต้องสร้าง persistence layer ใหม่. **ถ้า scope ใหญ่เกิน → block + report กลับ ji-ziyue ก่อนทำ**
 
 ---
 
-## 9. การตัดสินใจที่ได้รับการอนุมัติแล้ว ✅
+### 3.4 — Discord channel config UI (Worker: yefan backend + shihao frontend, ขนาด: M)
 
-1. **Port**: `7878` ✅
-2. **Auto-open browser**: ไม่ — พี่เบญเปิดเอง ✅
-3. **ภาษา UI**: ชื่อ agent + คำสถานะเป็นไทย, technical term เป็นอังกฤษ ✅
-4. **Rive fallback**: ถ้าหา 5 ตัวต่างกันไม่ได้ → ใช้ตัวเดียวกัน tint สีต่าง ✅
+**Backend:** `server/lib/discordConfig.ts` (new file)
+1. Read/write `~/.heaveneye/discord.json` (NOT .env — เพราะ .env เปลี่ยน need restart)
+2. Endpoint: `GET /api/config/discord` → return `{ webhookUrl: string | null }`
+3. Endpoint: `POST /api/config/discord` body `{ webhookUrl }` → validate URL format + write file
+4. Endpoint: `POST /api/config/discord/test` → ส่ง "ping from heaveneye" ไปยัง webhook URL ปัจจุบัน → return `{ ok, status }`
+5. แก้ `lib/discordNotifier.ts` ให้อ่าน webhook URL จากไฟล์ก่อน fallback ไป .env
+
+**Frontend:** `DiscordPanel.tsx` (existing)
+1. เพิ่ม "⚙ Settings" button → modal เปิดมา
+2. Modal: input webhook URL + Save button + Test button
+3. Save → POST → success toast
+4. Test → POST → toast แสดง result
+
+**Acceptance:**
+- กรอก URL ใหม่ → Save → ไฟล์ `~/.heaveneye/discord.json` มี URL ใหม่
+- กด Test → Discord channel ได้รับ "ping from heaveneye"
+- restart server → URL ใหม่ยังใช้อยู่ (persist OK)
+- URL ไม่ valid → save reject 400
+
+**ห้ามทำ:** เก็บ webhook URL ใน .env (เพราะ require restart), commit `discord.json` (ต้องอยู่ใน .gitignore)
+---
+
+### 3.5 — Maintenance & Stability Improvements (Completed 2026-05-27)
+
+**ทำ:**
+1. **TypeScript Typecheck Fixes**: แก้ไข TS compiler errors ใน `DependencyMap.tsx`, `ReportViewer.tsx`, และ `store.ts` ให้ `tsc --noEmit` ผ่านเป็น 0
+2. **Discord Webhook Dynamic Reload**: แก้ไขให้ `discordNotifier.ts` โหลด Webhook URL จาก config file ทุกครั้งที่มีการเรียกใช้งาน (ไม่แคชที่ module load) ทำให้เปลี่ยนปุ๊บมีผลทันที
+3. **RAM Alert Threshold Adjustment**: เปลี่ยน RAM default threshold เป็น 85% ของ RAM ทั้งระบบ (`totalmem() * 0.85`) แทนที่จะเป็น hardcoded 2 GB เพื่อป้องกัน false positive alert
+4. **Dynamic Board Switcher**: เชื่อมโยง board state เข้ากับ Zustand store บนเว็บ ทำให้เปลี่ยนบอร์ดใน Reports dropdown แล้วตัวบอร์ด Dependency DAG เปลี่ยนตามแบบ Real-time โดยดึงข้อมูลผ่าน `/api/dag?board=...`
+5. **JSONL Log Parser Header Skip**: แก้ไขตัวตรวจสอบ `isJsonL` ใน `ReportViewer.tsx` ให้ข้ามบรรทัดที่เป็น comment (เริ่มด้วย `#`) เพื่อแสดงผลข้อมูลใน `result.events.log` เป็นตารางได้ถูกต้อง
+6. **DAG Zoom & Grab-to-Pan**: เพิ่มปุ่มควบคุมการซูม (Zoom Controls: 30%-150%) และความสามารถในการคลิกเมาส์ลากเลื่อนดูแผนภาพ (Grab-to-Pan) ในกล่องแสดง Dependency DAG เพื่อจัดการกับกราฟที่ยาวหรือใหญ่ล้นหน้าจอได้สะดวกรวดเร็ว
 
 ---
 
-## 10. Ready check (กดอนุมัติเมื่อพร้อม)
+### 3.6 — Phase E: Monitoring & Security Enhancements (Completed 2026-05-27)
 
-- [ ] อ่าน plan แล้ว เข้าใจตรงกัน
-- [ ] ตอบคำถามใน §9 แล้ว
-- [ ] ให้ start Phase 1.1
+**ทำ:**
+1. **Real-time Daemon Process Monitor**: เพิ่ม `cpuPercent` และ `ramBytes` ใน backend & frontend `GatewayHealth` interface. ทำการเรียก `ps -p <pid> -o %cpu,rss` เพื่อดึงข้อมูลมาแสดงผลในแบบ progress bar/gauges บนกล่อง SystemHealth
+2. **Token Burn Rate Alerting**: เพิ่ม `burnRateLimitTokensPerMin` (default 50,000) ใน Alert Config เพื่อคอยเตือนเมื่อ agent ใช้ token เร็วเกินความจำเป็น (เก็บประวัติการใช้ token ในนาทีสุดท้าย และส่งคำเตือนไปยัง Discord, Tauri system alert, และ state logs เมื่อเกินขีดจำกัด)
+3. **Agent Productivity Heatmap**: เพิ่ม API `/api/agent/:id/activity-heatmap` เพื่อดึงประวัติการทำงานย้อนหลัง 30 วันจาก SQLite databases ใน timezone กรุงเทพฯ (UTC+7) และนำมาแสดงผลเป็น GitHub-style heatmap grid พร้อมระบบ tooltip แสดงผลจำนวน action และวันที่เมื่อเอาเมาส์ไปชี้ใน DetailPanel
+4. **Code Review & Clean Up**: ตรวจสอบการอ้างอิงเส้นทางโฟลเดอร์ผู้ใช้ และทำการย้ายไปใช้ค่าคงที่ `HOME` จาก `config.ts` ทั้งหมด แทนการอ้างอิง `process.env.HOME` แยกส่วนกัน เพื่อลดความเสี่ยงที่การทำงานใน sandbox profile จะได้เส้นทางต่างกันจนเกิดบั๊ก คลีนอัพโค้ดส่วนที่เกินและไม่ใช้งานออกพร้อมคอมไพล์ผ่านเรียบร้อย
+5. **Top-level Virtual Office Map**: แทนที่ผังองค์กรการ์ดแบบเดิมด้วยห้องทำงานจำลอง Blueprint 2D (อยู่ใต้ SystemHealth) วางตำแหน่งโต๊ะคอมพิวเตอร์และป้ายชื่อของ Agent แต่ละคนตามพิกัดหน้าจอ และต่อวงจรควบคุมด้วย Framer Motion: เมื่อมีข้อความอัปเดตสเตตัสการส่งงานเสร็จ (เช่น yefan มีสถานะเป็น blocked หรือ done) ตัวละคร Rive Avatar ของเย่ฝานจะขยับเดินส่ายสะโพกโยกหัว (waddling walk) ข้ามหน้าจอไปวางเอกสารส่งงานบนโต๊ะของเมี่ยวอี (Hermes Lead) พร้อมแสดงเอฟเฟกต์พลุไอคอนกล่องงานเด้ง ก่อนจะเดินกลับมานั่งโต๊ะทำงานของตนเองตามปกติ (พร้อมทั้งออกแบบรูปสัญลักษณ์ตัวละครใหม่เป็น Emoji รูปผู้คนในสายงานต่างๆ 👩‍💼 👩‍✈️ 👨‍💻 และลดขนาดความสูงแผนที่ออฟฟิศจาก 620px ลงเหลือ 450px และขนาดโต๊ะกับ RiveAvatar เป็น size sm เพื่อความกระชับกะทัดรัดลงตัว)
+
+---
+
+## 4. Execution protocol
+
+1. **เริ่ม 3.1 (shihao)** — quick win, แก้ไฟล์เดียว
+2. ji-ziyue audit: ดู UI ใช้งานได้ + typecheck + persist works
+3. **เริ่ม 3.2 (yefan)** — daemon migration
+4. ji-ziyue audit: stat result.md mtime ไม่เปลี่ยน + events.log มี content
+5. **เริ่ม 3.3 (yefan ก่อน backend, แล้ว shihao frontend)** — ถ้า yefan เจอ engine ไม่ persist → block + report
+6. ji-ziyue audit: 3 windows ใช้งานได้
+7. **เริ่ม 3.4 (yefan backend → shihao frontend)** — full stack
+8. ji-ziyue audit: save + test webhook + persist after restart
+
+**ทุก step:** `bunx tsc --noEmit` exit 0 + `bun run build` pass ก่อน mark done
+
+---
+
+---
+
+## 5. Out of scope (ตัดสินใจไม่ทำ)
+
+- ❌ Chat กับ agent ผ่าน UI — CLI ไม่เหมาะ web
+- ❌ Spawn session ใน dashboard — ใช้ terminal
+- ❌ Model switcher UI — edit config.yaml + restart launchd กระชับกว่า
+- ❌ Code-split lazy loading — bundle 367kB ไม่ใหญ่พอที่จะต้อง
+
+---
+
+## 6. กฎสำหรับ ji-ziyue / ทีม
+
+- ทุก commit `bunx tsc --noEmit` exit 0
+- 1 task = 1 commit (เล็ก ๆ ดีกว่าใหญ่)
+- มี acceptance criteria วัดได้ก่อน start
+- runtime verify (curl/click) ก่อน mark done
+- ห้ามเพิ่ม dep ใหม่ถ้าไม่จำเป็น (กระทบ bundle size)
+- ห้ามเพิ่ม chat/spawn/WS infra กลับเข้ามา (pivot rule)
+
+---
+
+_Plan rewrite 2026-05-23 20:30 by Ji Ziyue, post-pivot. v2 chat plan archived in git history (commits before 2026-05-23 evening)._

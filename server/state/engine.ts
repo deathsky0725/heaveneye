@@ -1,5 +1,6 @@
-import { AGENTS, AGENT_IDS, type AgentId } from '../config.ts';
-import type { AgentSnapshot, AgentStatus, TokenUsage, ServerEvent, KanbanEventEntry, NotificationEntry } from './types.ts';
+import { join } from 'node:path';
+import { AGENTS, AGENT_IDS, type AgentId, HOME } from '../config.ts';
+import type { AgentSnapshot, AgentStatus, TokenUsage, ServerEvent, KanbanEventEntry, NotificationEntry, CrashNotificationEntry } from './types.ts';
 
 type Listener = (event: ServerEvent) => void;
 
@@ -61,6 +62,10 @@ class StateEngine {
   private currentSessionId = new Map<AgentId, string>();
 
   private static readonly TOOL_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+  // === Crash notification queue (Phase D.2) ===
+  private crashNotifications: CrashNotificationEntry[] = [];
+  private static readonly CRASH_NOTIFICATION_MAX = 50;
 
   constructor() {
     for (const id of AGENT_IDS) this.agents.set(id, blankSnapshot(id));
@@ -182,6 +187,119 @@ class StateEngine {
     return buckets;
   }
 
+  getUsageLastMinute(agentId: AgentId): number {
+    if (!AGENTS[agentId]) return 0;
+    const now = Date.now();
+    const oneMinAgo = now - 60000;
+    const events = this.tokenEvents.get(agentId) ?? [];
+    let sum = 0;
+    for (const e of events) {
+      if (e.ts > oneMinAgo) {
+        sum += (e.usage.input ?? 0) + (e.usage.output ?? 0) + (e.usage.cacheRead ?? 0) + (e.usage.cacheCreate ?? 0);
+      }
+    }
+    return sum;
+  }
+
+  /**
+   * 7d daily buckets for a single agent — used by /api/usage/7d.
+   * Returns 7 buckets (oldest first, today last), each summing all token
+   * components for that calendar day (local time).
+   */
+  getUsage7d(agentId: AgentId): Array<{ day: string; total: number; input: number; output: number; cacheRead: number }> {
+    return this._getUsageNdays(agentId, 7);
+  }
+
+  /**
+   * 30d daily buckets for a single agent — used by /api/usage/30d.
+   * Returns 30 buckets (oldest first, today last), each summing all token
+   * components for that calendar day (local time).
+   */
+  getUsage30d(agentId: AgentId): Array<{ day: string; total: number; input: number; output: number; cacheRead: number }> {
+    return this._getUsageNdays(agentId, 30);
+  }
+
+  private _getUsageNdays(agentId: AgentId, days: number): Array<{ day: string; total: number; input: number; output: number; cacheRead: number }> {
+    if (!AGENTS[agentId]) return [];
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const buckets: Array<{ day: string; total: number; input: number; output: number; cacheRead: number }> = [];
+
+    // Collect historical daily files
+    const historical = this._loadHistoricalDays(agentId, days);
+
+    for (let i = days - 1; i >= 0; i--) {
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      dayStart.setDate(dayStart.getDate() - i);
+      const start = dayStart.getTime();
+      const end = start + dayMs;
+
+      // Check if this is today (partial window)
+      const isToday = i === 0;
+
+      if (isToday) {
+        // Today: aggregate from in-memory tokenEvents24h
+        const events = this.tokenEvents24h.get(agentId) ?? [];
+        const inBucket = events.filter((e) => e.ts >= start && e.ts < Date.now());
+        const sum = inBucket.reduce(
+          (acc, e) => ({
+            input: acc.input + e.usage.input,
+            output: acc.output + e.usage.output,
+            cacheRead: acc.cacheRead + e.usage.cacheRead,
+          }),
+          { input: 0, output: 0, cacheRead: 0 }
+        );
+        buckets.push({
+          day: dayStart.toISOString().split('T')[0]!,
+          total: sum.input + sum.output + sum.cacheRead,
+          ...sum,
+        });
+      } else {
+        // Historical: use daily file
+        const dateStr = dayStart.toISOString().split('T')[0]!;
+        const sum = historical.get(dateStr) ?? { input: 0, output: 0, cacheRead: 0 };
+        buckets.push({
+          day: dateStr,
+          total: sum.input + sum.output + sum.cacheRead,
+          ...sum,
+        });
+      }
+    }
+    return buckets;
+  }
+
+  private _loadHistoricalDays(agentId: AgentId, days: number): Map<string, { input: number; output: number; cacheRead: number }> {
+    const result = new Map<string, { input: number; output: number; cacheRead: number }>();
+    try {
+      const { readFileSync, existsSync, readdirSync } = require('node:fs');
+      const usageDir = `${HOME}/.heaveneye/usage`;
+      if (!existsSync(usageDir)) return result;
+      const files = readdirSync(usageDir).filter((f: string) => f.startsWith(`${agentId}-`) && f.endsWith('.json'));
+      for (const file of files) {
+        const dateStr = file.replace(`${agentId}-`, '').replace('.json', '');
+        // Only load if within requested window
+        const fileDate = new Date(dateStr);
+        const now = new Date();
+        const diffDays = Math.floor((now.getTime() - fileDate.getTime()) / (24 * 60 * 60 * 1000));
+        if (diffDays >= days) continue;
+        const content = readFileSync(`${usageDir}/${file}`, 'utf8');
+        const lines = content.trim().split('\n');
+        const sum = { input: 0, output: 0, cacheRead: 0 };
+        for (const line of lines) {
+          try {
+            const ev = JSON.parse(line);
+            sum.input += ev.input ?? 0;
+            sum.output += ev.output ?? 0;
+            sum.cacheRead += ev.cacheRead ?? 0;
+          } catch { /* skip malformed lines */ }
+        }
+        result.set(dateStr, sum);
+      }
+    } catch { /* no historical data or dir not accessible */ }
+    return result;
+  }
+
   snapshot(): AgentSnapshot[] {
     return AGENT_IDS.map((id) => this.agents.get(id)!);
   }
@@ -274,7 +392,11 @@ class StateEngine {
     this.setStatus(id, 'thinking');
     // Create session entry — use event timestamp from watcher, fallback to Date.now()
     const sessions = this.sessions.get(id) ?? [];
-    const startTs = info.ts ? new Date(info.ts).getTime() : Date.now();
+    const startTs = info.ts ? new Date(info.ts).getTime() : (() => {
+      console.warn(`[engine] onHermesSessionStart(${id}) missing ts — falling back to Date.now(). ` +
+        `sessionId=${info.sessionId}, taskId=${info.taskId ?? 'none'}`);
+      return Date.now();
+    })();
     sessions.push({ sessionId: info.sessionId, startTs, endTs: null, totalEvents: 0, totalTokens: 0 });
     this.sessions.set(id, sessions);
     this.currentSessionId.set(id, info.sessionId);
@@ -284,12 +406,18 @@ class StateEngine {
     if (!AGENTS[id]) return;
     this.patch(id, { currentModel: AGENTS[id].defaultModel });
     this.setStatus(id, 'done');
+    // Only set endTs on the session that was actually ended — skip nested replays
     const sessions = this.sessions.get(id) ?? [];
-    const entry = sessions.find((s) => s.sessionId === _sessionId);
+    const entry = this.currentSessionId.get(id) === _sessionId
+      ? sessions.find((s) => s.sessionId === _sessionId)
+      : undefined;
     if (entry) {
       entry.endTs = ts ? new Date(ts).getTime() : Date.now();
     }
-    this.currentSessionId.delete(id);
+    // Only clean up currentSessionId if it still points to this session
+    if (this.currentSessionId.get(id) === _sessionId) {
+      this.currentSessionId.delete(id);
+    }
   }
 
   // === Hermes status.jsonl events (legacy / supplementary) ===
@@ -368,6 +496,9 @@ class StateEngine {
       }
     }
 
+    // Persist to daily JSONL for 7d/30d window support
+    this.writeDailyUsage(id, usage);
+
     const t = cur.tokensToday;
     const merged: TokenUsage = {
       input: t.input + usage.input,
@@ -432,6 +563,18 @@ class StateEngine {
   private notificationBuffer: NotificationEntry[] = [];
   private static readonly NOTIFICATION_BUFFER_CAPACITY = 50;
 
+  /** Write one token event to the daily JSONL file for persistence (7d+ window support) */
+  private writeDailyUsage(id: AgentId, usage: TokenUsage) {
+    try {
+      const { appendFileSync, existsSync, mkdirSync } = require('node:fs');
+      const dir = `${HOME}/.heaveneye/usage`;
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      const dateStr = new Date().toISOString().split('T')[0]!;
+      const file = `${dir}/${id}-${dateStr}.json`;
+      appendFileSync(file, JSON.stringify(usage) + '\n');
+    } catch { /* non-critical — don't fail token accounting for disk errors */ }
+  }
+
   onNotificationEntry(entry: Omit<NotificationEntry, 'id'>): void {
     const e: NotificationEntry = { ...entry, id: ++this.notificationIdCounter };
     if (this.notificationBuffer.length >= StateEngine.NOTIFICATION_BUFFER_CAPACITY) {
@@ -444,6 +587,20 @@ class StateEngine {
   getNotifications(limit = 50): NotificationEntry[] {
     const n = Math.min(limit, StateEngine.NOTIFICATION_BUFFER_CAPACITY);
     return this.notificationBuffer.slice(-n);
+  }
+
+  // === Crash notification queue (Phase D.2) ===
+
+  pushCrashNotification(entry: CrashNotificationEntry): void {
+    if (this.crashNotifications.length >= StateEngine.CRASH_NOTIFICATION_MAX) {
+      this.crashNotifications.shift();
+    }
+    this.crashNotifications.push(entry);
+  }
+
+  popCrashNotifications(since: number): CrashNotificationEntry[] {
+    const pending = this.crashNotifications.filter((n) => n.ts > since);
+    return pending;
   }
 
   // === System health ===
@@ -579,6 +736,84 @@ class StateEngine {
     const counts = this.agentToolCounts.get(id) ?? new Map();
     counts.set(toolName, (counts.get(toolName) ?? 0) + 1);
     this.agentToolCounts.set(id, counts);
+  }
+
+  /**
+   * Cross-board aggregate summary — queries kanban DBs directly.
+   * Returns per-board: total tasks, done today, blocked, avg completion time (ms).
+   */
+  getBoardSummaries(): Array<{
+    board: string;
+    totalTasks: number;
+    doneToday: number;
+    blocked: number;
+    avgCompletionMs: number | null;
+  }> {
+    const BOARDS_ROOT = join(HOME, '.hermes', 'kanban', 'boards');
+    const result: Array<{
+      board: string; totalTasks: number; doneToday: number; blocked: number; avgCompletionMs: number | null;
+    }> = [];
+    try {
+      const { readdirSync, existsSync } = require('node:fs');
+      if (!existsSync(BOARDS_ROOT)) return result;
+      const nowMs = Date.now();
+      const todayStart = (() => {
+        const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
+      })();
+
+      for (const entry of readdirSync(BOARDS_ROOT, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith('_')) continue;
+        const dbPath = join(BOARDS_ROOT, entry.name, 'kanban.db');
+        if (!existsSync(dbPath)) continue;
+        try {
+          const db = new (require('bun:sqlite').Database)(dbPath, { readonly: true });
+
+          // Total tasks (all statuses)
+          const totalRow = db.query('SELECT COUNT(*) AS cnt FROM tasks').get() as { cnt: number };
+          const totalTasks = totalRow.cnt;
+
+          // Done today (completed events since today's midnight)
+          const doneTodayRow = db.query(`
+            SELECT COUNT(DISTINCT e.task_id) AS cnt FROM task_events e
+            WHERE e.kind = 'completed'
+              AND e.created_at >= ?
+          `).get(todayStart / 1000) as { cnt: number };
+          const doneToday = doneTodayRow.cnt;
+
+          // Blocked (current tasks with status = 'blocked')
+          const blockedRow = db.query(`
+            SELECT COUNT(*) AS cnt FROM tasks WHERE status = 'blocked'
+          `).get() as { cnt: number };
+          const blocked = blockedRow.cnt;
+
+          // Avg completion time: time between 'claimed' and 'completed' events on same task,
+          // across all completed tasks in the last 30 days.
+          const thirtyDaysAgo = (nowMs / 1000) - (30 * 24 * 60 * 60);
+          const completedTasks = db.query(`
+            SELECT e.task_id,
+              MIN(CASE WHEN e.kind = 'claimed' THEN e.created_at END) AS claimed_at,
+              MIN(CASE WHEN e.kind = 'completed' THEN e.created_at END) AS completed_at
+            FROM task_events e
+            WHERE e.kind IN ('claimed', 'completed')
+              AND e.created_at >= ?
+            GROUP BY e.task_id
+            HAVING claimed_at IS NOT NULL AND completed_at IS NOT NULL
+          `).all(thirtyDaysAgo) as { task_id: string; claimed_at: number; completed_at: number }[];
+
+          let avgCompletionMs: number | null = null;
+          if (completedTasks.length > 0) {
+            const sumMs = completedTasks.reduce(
+              (acc, t) => acc + (t.completed_at - t.claimed_at) * 1000, 0
+            );
+            avgCompletionMs = Math.round(sumMs / completedTasks.length);
+          }
+
+          db.close();
+          result.push({ board: entry.name, totalTasks, doneToday, blocked, avgCompletionMs });
+        } catch { /* skip unreadable board */ }
+      }
+    } catch { /* boards dir not accessible */ }
+    return result;
   }
 }
 

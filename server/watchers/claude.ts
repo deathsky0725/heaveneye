@@ -85,6 +85,13 @@ function attributeAgent(row: ClaudeMessageLine, _ownerHint: AgentId | undefined)
   return 'ziyue';
 }
 
+// NOTE: onTokenUsage is intentionally NOT called in this file.
+// Token accounting is the single responsibility of startHermesEventWatcher
+// (heaveneye-events.jsonl is the authoritative source written by the Hermes hook).
+// Calling onTokenUsage here would double-count: both this watcher and
+// hermes-events.ts emit token events for the same api_request.
+// Result: tokensToday jumps 311k→410k on feed reload (double increment on same session).
+
 export async function startClaudeWatcher(opts: { replayHistory?: boolean } = {}) {
   const tails = new Map<string, JsonlTail>();
   console.log(`[claude] init — ROOT=${ROOT}, replayHistory=${opts.replayHistory}`);
@@ -96,22 +103,12 @@ export async function startClaudeWatcher(opts: { replayHistory?: boolean } = {})
     const usage = row.message?.usage;
     if (!usage) return;
 
-    const { tool, ownerHint } = inspectToolUses(row.message?.content);
+    const { tool: _tool, ownerHint } = inspectToolUses(row.message?.content);
     const agentId = attributeAgent(row, ownerHint);
     if (!agentId) return;
-    console.log(`[claude] token usage: agent=${agentId} tool=${tool ?? 'none'} session=${row.sessionId}`);
-    const tsMs = row.timestamp ? new Date(row.timestamp).getTime() : undefined;
-    state.onTokenUsage(
-      agentId,
-      {
-        input: usage.input_tokens ?? 0,
-        output: usage.output_tokens ?? 0,
-        cacheRead: usage.cache_read_input_tokens ?? 0,
-        cacheCreate: usage.cache_creation_input_tokens ?? 0,
-      },
-      tool,
-      tsMs,
-    );
+    // Tool attribution only — token accounting comes exclusively from hermes-events.ts
+    // via heaveneye-events.jsonl to avoid double-counting across watcher sources.
+    console.log(`[claude] tool use: agent=${agentId} tool=${_tool ?? 'none'} session=${row.sessionId}`);
   };
 
   const processFile = async (file: string) => {
