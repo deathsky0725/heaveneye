@@ -4,7 +4,7 @@ import type { AgentId, AgentSnapshot, AgentStatus } from '../types';
 import { useStore } from '../store';
 import { RiveAvatar } from './RiveAvatar';
 import { IsoDesk } from './IsoDesk';
-import { isoProject, depthZ, ISO_GRID, GRID_SIZE, AUTO_FIT } from '../lib/iso';
+import { isoProject, depthZ, depthZFromCoords, ISO_GRID, GRID_SIZE, AUTO_FIT } from '../lib/iso';
 
 // Status-aware speech bubble copy (พูดเองได้ ฟีลมีชีวิต)
 const SPEECH_LINES: Partial<Record<AgentStatus, string[]>> = {
@@ -325,7 +325,7 @@ export function OfficeMap() {
         const isThinking = agent.status === 'thinking';
         const isWorking = agent.status === 'working';
         const isCore = CORE_AGENTS.has(agent.id);
-        const { col: homeCol, row: homeRow } = ISO_GRID[agent.id];
+        const { row: homeRow } = ISO_GRID[agent.id];
         const active = agent.status !== 'idle';
 
         return (
@@ -340,9 +340,15 @@ export function OfficeMap() {
             onAnimationComplete={() => handleArrival(agent.id)}
             className="absolute flex flex-col items-center"
             style={{
-              // B1.2 — z-index = depthZ(home col, home row) so foreground
-              // agents (higher col+row) render on top of background ones.
-              zIndex: depthZ(homeCol, homeRow),
+              // B1.2 — z-index tracks depthZ of the **current** screen
+              // position. B1.4: previously bound to home (col,row) so
+              // the waddling specialist kept the home-tile z-index even
+              // mid-walk — which made them disappear behind anmaioyi
+              // (same depth) or briefly sit behind a foreground row.
+              // depthZFromCoords unprojects the current position so the
+              // z-index smoothly tracks the iso walk line. When the
+              // agent is at home the value matches depthZ(home) exactly.
+              zIndex: depthZFromCoords(coords.x, coords.y),
               width: `${AGENT_WRAPPER_W}%`,
               height: `${AGENT_WRAPPER_H}%`,
               // Anchor wrapper at its top-left, but children inside use the

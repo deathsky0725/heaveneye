@@ -123,3 +123,36 @@ export function isoProject(col: number, row: number): { x: number; y: number } {
 export function depthZ(col: number, row: number): number {
   return Math.round((col + row) * 10);
 }
+
+/**
+ * Inverse projection: screen percent { x, y } → fractional grid
+ * (col, row). Used during a waddle walk to compute the depth-sort
+ * z-index for the **current** screen position — important because
+ * as a specialist walks from their home tile toward anmaioyi's tile
+ * the (col+row) along the iso line can change (e.g. home row 4 →
+ * anmaioyi (2,2) means row goes 4→3→2). The result is fractional
+ * (the walking agent isn't sitting on a tile center); callers
+ * (depthZFromCoords) round it for z-index use.
+ *
+ * B1.4 — added so the wrapper z-index can track walk progress
+ * instead of staying fixed at the home tile's depthZ.
+ */
+export function isoUnproject(x: number, y: number): { col: number; row: number } {
+  // x = X0 + (col - row) * Sx  → col - row = (x - X0) / Sx
+  // y = Y0 + (col + row) * Sy  → col + row = (y - Y0) / Sy
+  // solve:
+  const cr = (x - FIT.X0) / FIT.Sx; // col - row
+  const sr = (y - FIT.Y0) / FIT.Sy; // col + row
+  return { col: (cr + sr) / 2, row: (sr - cr) / 2 };
+}
+
+/**
+ * Depth-sort z-index for an arbitrary screen position (used during
+ * the waddle walk). Equivalent to depthZ on the fractional (col,row)
+ * that the screen position unprojects to. Result is an integer so it
+ * stays stable as a CSS z-index.
+ */
+export function depthZFromCoords(x: number, y: number): number {
+  const { col, row } = isoUnproject(x, y);
+  return Math.round((col + row) * 10);
+}
