@@ -22,15 +22,18 @@ import type { AgentId } from '../types';
 export const ISO_ASPECT = 0.5; // Sy / Sx
 /**
  * Agent wrapper half-width in % of the office container. Mirrors
- * AGENT_WRAPPER_W / 2 in OfficeMap.tsx (= 5.5: AGENT_WRAPPER_W is
- * (ISO_DESK_HALF_W + ISO_DESK_PAD) * 2 = 11). Used only by the auto-fit
- * helper to ensure no wrapper gets clipped at the edge.
+ * AGENT_WRAPPER_W / 2 in OfficeMap.tsx — AGENT_WRAPPER_W =
+ * (ISO_DESK_HALF_W + ISO_DESK_PAD) * 2 = (4.5 + 1) * 2 = 11, so the
+ * half is 5.5. Used only by the auto-fit helper (usableX = 100 - 2*EDGE_PAD
+ * - 2*WRAPPER_HALF_W) to ensure no wrapper gets clipped at the edge.
  *
- * NOTE: value 13 below is stale — kept unchanged per C0 scope (comment-only
- * fix). Logic drift: comment + value both reflect pre-B1.3b state. Flag
- * for ji-ziyue to decide whether to sync value to 5.5 in a follow-up.
+ * Why 5.5 (not 13): the older value of 13 reserved ~26% of container width
+ * for "wrapper margin that doesn't exist" — the desks/wrappers are
+ * actually 11% wide. The 13 caused Sx to land at 11.33%, leaving the
+ * office visibly small/loose. With 5.5, usableX jumps 68→83 (+22%) and
+ * Sx scales accordingly so the office fills the container.
  */
-export const WRAPPER_HALF_W = 13; // STALE: ground truth is 5.5 — see C0 TODO
+export const WRAPPER_HALF_W = 5.5;
 /** Auto-fit edge padding — the closest any agent wrapper may come to a container edge. */
 const EDGE_PAD = 3; // %
 
@@ -61,14 +64,14 @@ export const GRID_SIZE = 5;
  *   1. Sy = Sx * ISO_ASPECT   (preserve diamond look)
  *   2. Wrapper x range ⊂ [EDGE_PAD, 100 - EDGE_PAD]   (no clipping)
  *   3. Wrapper y range ⊂ [EDGE_PAD, 100 - EDGE_PAD]   (no clipping)
- *   4. Visual centre of the agent distribution lands at (50, 50) when
- *      possible (i.e. we don't squash to fit edge constraints first)
+ *   4. Agent BBOX center lands at (50, 50) so left/right edge
+ *      padding is symmetric (C0.1 — was centroid-based, left
+ *      asymmetric edge padding whenever xRawMin/xRawMax were not
+ *      equidistant from the mean)
  */
 function computeAutoFit(grid: Record<AgentId, { col: number; row: number }>) {
   let xRawMin = Infinity, xRawMax = -Infinity;
   let yRawMin = Infinity, yRawMax = -Infinity;
-  let xRawMean = 0, yRawMean = 0;
-  let n = 0;
   for (const { col, row } of Object.values(grid)) {
     const xr = col - row;
     const yr = col + row;
@@ -76,12 +79,7 @@ function computeAutoFit(grid: Record<AgentId, { col: number; row: number }>) {
     if (xr > xRawMax) xRawMax = xr;
     if (yr < yRawMin) yRawMin = yr;
     if (yr > yRawMax) yRawMax = yr;
-    xRawMean += xr;
-    yRawMean += yr;
-    n += 1;
   }
-  xRawMean /= n;
-  yRawMean /= n;
 
   const xSpanRaw = xRawMax - xRawMin; // > 0
   const ySpanRaw = yRawMax - yRawMin; // > 0
@@ -99,11 +97,16 @@ function computeAutoFit(grid: Record<AgentId, { col: number; row: number }>) {
   const Sx = Math.min(SxFromX, SxFromY);
   const Sy = Sx * ISO_ASPECT;
 
-  // X0: keep xRawMean projected near 50 (so the agent distribution is
-  // visually balanced — not skewed to one side like the old B1.3 layout).
-  // yRawMean projected at 50.
-  const X0 = 50 - xRawMean * Sx;
-  const Y0 = 50 - yRawMean * Sy;
+  // X0: center the agent BBOX (not the centroid). Centering the centroid
+  // leaves asymmetric edge padding whenever xRawMin/xRawMax are not
+  // equidistant from the mean (e.g. the current grid has wenshu at
+  // xRaw=-4 and ziyue at xRaw=+2, so a centroid-based X0 puts ziyue
+  // ~0.28*Sx closer to the right edge than wenshu is to the left).
+  // Bbox-centering gives equal EDGE_PAD on both sides.
+  const xBboxCenter = (xRawMin + xRawMax) / 2;
+  const yBboxCenter = (yRawMin + yRawMax) / 2;
+  const X0 = 50 - xBboxCenter * Sx;
+  const Y0 = 50 - yBboxCenter * Sy;
 
   return { Sx, Sy, X0, Y0 };
 }
