@@ -22,10 +22,15 @@ import type { AgentId } from '../types';
 export const ISO_ASPECT = 0.5; // Sy / Sx
 /**
  * Agent wrapper half-width in % of the office container. Mirrors
- * AGENT_WRAPPER_W / 2 in OfficeMap.tsx (currently 13). Used only by the
- * auto-fit helper to make sure no wrapper gets clipped at the edge.
+ * AGENT_WRAPPER_W / 2 in OfficeMap.tsx (= 5.5: AGENT_WRAPPER_W is
+ * (ISO_DESK_HALF_W + ISO_DESK_PAD) * 2 = 11). Used only by the auto-fit
+ * helper to ensure no wrapper gets clipped at the edge.
+ *
+ * NOTE: value 13 below is stale — kept unchanged per C0 scope (comment-only
+ * fix). Logic drift: comment + value both reflect pre-B1.3b state. Flag
+ * for ji-ziyue to decide whether to sync value to 5.5 in a follow-up.
  */
-export const WRAPPER_HALF_W = 13;
+export const WRAPPER_HALF_W = 13; // STALE: ground truth is 5.5 — see C0 TODO
 /** Auto-fit edge padding — the closest any agent wrapper may come to a container edge. */
 const EDGE_PAD = 3; // %
 
