@@ -391,3 +391,26 @@ html.theme-transition *::after {
   50% { box-shadow: 0 0 10px rgba(96, 165, 250, 0.6), inset 0 0 4px rgba(96, 165, 250, 0.4); opacity: 1; }
 }
 
+/* C2 — slow amber "thinking" monitor pulse. Slower period (3.6s vs 2s)
+   and warmer hue so it reads as "loading / contemplating" rather than
+   "actively processing code". Pairs with IsoDesk monitorMode='thinking'. */
+.computer-think {
+  animation: screen-think 3.6s ease-in-out infinite;
+}
+@keyframes screen-think {
+  0%, 100% { box-shadow: 0 0 3px rgba(251, 191, 36, 0.18), inset 0 0 2px rgba(251, 191, 36, 0.12); opacity: 0.7; }
+  50%      { box-shadow: 0 0 8px rgba(251, 191, 36, 0.45), inset 0 0 3px rgba(251, 191, 36, 0.30); opacity: 0.95; }
+}
+
+/* C2 a11y — respect prefers-reduced-motion: kill the desk monitor pulse
+   animations entirely. The screen stays in its "lit" colour (working
+   cyan / thinking amber) so the state is still legible, but no breathing
+   animation runs. motion/react's useReducedMotion handles the JS-side
+   lean pose; this guards the CSS pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .computer-glow,
+  .computer-think {
+    animation: none;
+  }
+}
+

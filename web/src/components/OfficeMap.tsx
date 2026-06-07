@@ -469,6 +469,13 @@ export function OfficeMap() {
         const isHovered = hovered[agent.id] ?? false;
         const isIdle = agent.status === 'idle' && !isWaddling && !isWorking && !isThinking && !isHovered;
         const shouldBob = isIdle && !prefersReducedMotion;
+        // C2 — typing lean trigger.  Only when the agent is at the desk
+        // actively working, not waddling, not hovered, and the user
+        // hasn't opted out of motion.  Mirrors the C1 shouldBob gate so
+        // the two poses share the same a11y behavior.  Hover suppresses
+        // lean so the hover raise (B1.5 y:-2.5) reads cleanly without
+        // competing with the rotate/scaleY pose.
+        const shouldLean = isWorking && !isWaddling && !isHovered && !prefersReducedMotion;
         const bobDelay = IDLE_BOB_STAGGER[agent.id] ?? 0;
         const isCore = CORE_AGENTS.has(agent.id);
         const { row: homeRow } = ISO_GRID[agent.id];
@@ -509,14 +516,23 @@ export function OfficeMap() {
                 centered on the cuboid's bottom diamond center (which sits
                 on the floor tile center) and spans the full cuboid
                 bbox. 1 viewBox unit = 1% of the office container, so the
-                geometry matches the wrapper %-units. */}
+                geometry matches the wrapper %-units.
+                C2 — pass explicit `mode` so the monitor colour + glow
+                class match the avatar state. We map the agent status to
+                monitorMode directly: idle→idle, thinking→thinking,
+                working→working, anything else (done/failed/blocked) →
+                idle (monitor is off when not actively working). */}
             <IsoDesk
               agentId={agent.id}
               color={agent.color}
               halfW={ISO_DESK_HALF_W}
               halfH={ISO_DESK_HALF_H}
               depth={ISO_DESK_DEPTH}
-              active={active}
+              mode={
+                agent.status === 'working' || agent.status === 'thinking'
+                  ? agent.status
+                  : 'idle'
+              }
             />
 
             {/* Avatar billboard — flat, ตั้งตรง, no rotate. Anchored so
@@ -548,16 +564,59 @@ export function OfficeMap() {
                   // waddle values here when isWaddling).  When neither,
                   // y stays at 0 (no animation).  `rotate` is waddle-only;
                   // idle bob never rotates.
-                  rotate: isWaddling ? [-4, 4] : 0,
+                  // C2 — typing lean when working (not waddling, not
+                  // hovered).  Subtle periodic rotate sway (-2°→+2°)
+                  // with a small y/scaleY pulse to feel like leaning
+                  // into the keyboard.  Sits between waddle and bob:
+                  //   isWaddling   → waddle values
+                  //   shouldLean   → lean values (rotate + y + scaleY)
+                  //   shouldBob    → idle bob
+                  //   else         → static (duration: 0)
+                  // `rotate` is now 3-way: waddle | lean | 0.
+                  rotate: isWaddling
+                    ? [-4, 4]
+                    : shouldLean
+                    ? [-2, 2]
+                    : 0,
                   y: isWaddling
                     ? [0, -3]
+                    : shouldLean
+                    ? [-1, 0.5]
                     : shouldBob
                     ? [-1.5, 1.5]
                     : 0,
+                  // C2 — scaleY squash to read as "leaning into the desk"
+                  // while typing.  Only set in the lean branch; waddle
+                  // and bob use the default 1 (motion will not animate a
+                  // missing key, but we pass 1 explicitly to be safe so
+                  // the previous scaleY value doesn't linger from a
+                  // lean→idle transition).
+                  scaleY: shouldLean ? [0.97, 1] : 1,
                 }}
                 transition={
                   isWaddling
                     ? waddleTransition
+                    : shouldLean
+                    ? {
+                        rotate: {
+                          repeat: Infinity,
+                          repeatType: 'mirror',
+                          duration: 1.4,
+                          ease: 'easeInOut',
+                        },
+                        y: {
+                          repeat: Infinity,
+                          repeatType: 'mirror',
+                          duration: 1.4,
+                          ease: 'easeInOut',
+                        },
+                        scaleY: {
+                          repeat: Infinity,
+                          repeatType: 'mirror',
+                          duration: 1.4,
+                          ease: 'easeInOut',
+                        },
+                      }
                     : shouldBob
                     ? {
                         y: {

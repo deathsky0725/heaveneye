@@ -25,7 +25,18 @@ interface IsoDeskProps {
   halfH?: number;
   /** Box "height" in screen-%. Default 2.4 — just enough to read as 3D. */
   depth?: number;
-  /** When true, the monitor screen glows (status-aware). */
+  /**
+   * C2 — explicit monitor mode. Decides the screen color + glow class so
+   * the three readable states (idle / thinking / working) are visually
+   * distinct on the desk alone, not just via the avatar pill.
+   *   - 'working'  → emerald-cyan, screen-pulse animation
+   *   - 'thinking' → amber, slow amber-pulse animation
+   *   - 'idle'     → dark screen, no glow
+   * When omitted we fall back to the legacy `active` boolean (true =
+   * 'working' mode) so older callers don't break.
+   */
+  mode?: 'idle' | 'thinking' | 'working';
+  /** Legacy boolean — kept for backwards compat. Maps to mode='working' when true. */
   active?: boolean;
 }
 
@@ -35,8 +46,13 @@ export function IsoDesk({
   halfW = 9,
   halfH = 4.5,
   depth = 2.4,
+  mode,
   active = false,
 }: IsoDeskProps) {
+  // C2 — resolve monitor mode. Explicit `mode` wins; otherwise derive
+  // from the legacy `active` flag (true → 'working', else 'idle').
+  const monitorMode: 'idle' | 'thinking' | 'working' =
+    mode ?? (active ? 'working' : 'idle');
   // Cuboid vertices. Bottom diamond center is at the origin (0, 0);
   // top diamond center is at (0, -depth). In screen-% this means the
   // footprint lands on the office floor and the top of the desk sits
@@ -69,12 +85,33 @@ export function IsoDesk({
 
   // Monitor sits on the top face — a small dark rect centered, with a
   // glowing border when the agent is active.
+  // C2 — three explicit modes. The screen colour + glow class differ per
+  // state so the eye can tell them apart even at iso distance / small zoom:
+  //   - idle     → very dark, no glow
+  //   - thinking → amber, slow gentle pulse (amber-pulse keyframes in CSS)
+  //   - working  → emerald-cyan, faster pulse (computer-glow / screen-pulse)
   const monitorW = halfW * 0.55;
   const monitorH = halfH * 0.4;
   const monitorX = -monitorW / 2;
   const monitorY = -depth - monitorH / 2;
-  const monitorFill   = active ? 'rgba(56, 189, 248, 0.55)' : 'rgba(15, 23, 42, 0.85)';
-  const monitorStroke = active ? 'rgba(125, 211, 252, 0.85)' : 'rgba(148, 163, 184, 0.35)';
+  const monitorFill =
+    monitorMode === 'working'
+      ? 'rgba(56, 189, 248, 0.55)'   // cyan-400 — screen "lit, code running"
+      : monitorMode === 'thinking'
+      ? 'rgba(251, 191, 36, 0.45)'  // amber-400 — "thinking" warm light
+      : 'rgba(15, 23, 42, 0.85)';   // slate-900 — off
+  const monitorStroke =
+    monitorMode === 'working'
+      ? 'rgba(125, 211, 252, 0.85)'
+      : monitorMode === 'thinking'
+      ? 'rgba(252, 211, 77, 0.75)'
+      : 'rgba(148, 163, 184, 0.35)';
+  const monitorGlowClass =
+    monitorMode === 'working'
+      ? 'computer-glow'
+      : monitorMode === 'thinking'
+      ? 'computer-think'
+      : undefined;
 
   // ViewBox: span the full cuboid bbox (x: -halfW..+halfW,
   // y: -depth-halfH..+halfH) plus 1 unit padding so strokes don't clip.
@@ -143,7 +180,8 @@ export function IsoDesk({
         strokeWidth={0.18}
         strokeLinejoin="round"
       />
-      {/* Monitor (small screen on the top face) */}
+      {/* Monitor (small screen on the top face) — C2: glow class is now
+          mode-driven (working=cyan pulse, thinking=amber pulse, idle=none). */}
       <rect
         x={monitorX}
         y={monitorY}
@@ -154,7 +192,7 @@ export function IsoDesk({
         fill={monitorFill}
         stroke={monitorStroke}
         strokeWidth={0.1}
-        className={active ? 'computer-glow' : undefined}
+        className={monitorGlowClass}
       />
       {/* Defs — shared gradient for the ground-contact shadow. */}
       <defs>
