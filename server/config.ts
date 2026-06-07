@@ -16,7 +16,7 @@ export const HOME = REAL_HOME;
 
 export const HERMES_STATUS_PATH = join(
   HOME,
-  'Documents/Agentic-OS/Projects/yt-deathskylife/orchestration/status.jsonl'
+  'Agentic-OS/Projects/yt-deathskylife/orchestration/status.jsonl'
 );
 
 export const HEAVENEYE_EVENT_FILE = process.env.HEAVENEYE_EVENT_FILE
@@ -24,12 +24,12 @@ export const HEAVENEYE_EVENT_FILE = process.env.HEAVENEYE_EVENT_FILE
 
 export const INBOX_PATH = join(
   HOME,
-  'Documents/Agentic-OS/Context/ji-ziyue-inbox.jsonl'
+  'Agentic-OS/Context/ji-ziyue-inbox.jsonl'
 );
 
 export const INBOX_STATUS_PATH = join(
   HOME,
-  'Documents/Agentic-OS/Context/status.jsonl'
+  'Agentic-OS/Context/status.jsonl'
 );
 
 export const CLAUDE_PROJECTS_ROOT = join(HOME, '.claude', 'projects');

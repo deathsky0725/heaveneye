@@ -3,8 +3,8 @@
 > **Status: view-only dashboard (post-pivot 2026-05-23, all phases complete 2026-05-27)**
 > สั่งงาน agent จริง = ใช้ terminal/claude CLI/gemini CLI โดยตรง. Heaveneye = ดูสถานะ + ปุ่ม control แค่ที่จำเป็น
 
-Last updated: 2026-05-27 by anmaioyi (synced with result.md)
-Current phase: **All Phase 3 tasks COMPLETE — awaiting new backlog from พี่เบญ**
+Last updated: 2026-06-06 by ji-ziyue
+Current phase: **Phase B1 isometric office COMPLETE (5/5) — Phase C (liveness / task-driven) being scoped**
 
 ---
 

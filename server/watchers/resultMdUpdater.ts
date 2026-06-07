@@ -2,9 +2,9 @@
  * resultMdUpdater — appends structured JSON events to result.events.log when kanban events fire.
  *
  * Board slug → project path mapping:
- *   heaveneye-ui → ~/Documents/Agentic-OS/Projects/heaveneye/
- *   ytdsl-ep001  → ~/Documents/Agentic-OS/Projects/ytdsl-ep001/
- *   _other_      → ~/Documents/Agentic-OS/Projects/{slug}/ (heuristic)
+ *   heaveneye-ui → ~/Agentic-OS/Projects/heaveneye/
+ *   ytdsl-ep001  → ~/Agentic-OS/Projects/ytdsl-ep001/
+ *   _other_      → ~/Agentic-OS/Projects/{slug}/ (heuristic)
  *
  * Tracked events: completed, blocked, unblocked, crashed, gave_up, timed_out
  * (NOT claimed/spawned/heartbeat — too noisy)
@@ -17,8 +17,8 @@ import { join, dirname } from 'node:path';
 import { HOME } from '../config.ts';
 
 const RESULT_MD_MAP: Record<string, string> = {
-  'heaveneye-ui': 'Documents/Agentic-OS/Projects/heaveneye/',
-  'ytdsl-ep001':  'Documents/Agentic-OS/Projects/ytdsl-ep001/',
+  'heaveneye-ui': 'Agentic-OS/Projects/heaveneye/',
+  'ytdsl-ep001':  'Agentic-OS/Projects/ytdsl-ep001/',
 };
 
 /** Resolve board slug → absolute result.events.log path. Returns null if not resolvable. */
@@ -29,7 +29,7 @@ export function resolveBoardResultPath(boardSlug: string): string | null {
     if (existsSync(dirname(abs))) return abs;
   }
   // Heuristic: try Projects/{slug}/result.events.log
-  const fallback = join(HOME, 'Documents/Agentic-OS/Projects', boardSlug, 'result.events.log');
+  const fallback = join(HOME, 'Agentic-OS/Projects', boardSlug, 'result.events.log');
   if (existsSync(dirname(fallback))) return fallback;
   return null;
 }

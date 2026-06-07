@@ -4,10 +4,10 @@
 
 ## ⭐ Shared team library
 
-Persona + custom skill อยู่ที่ `~/Documents/Agentic-OS/Context/` (single source)
+Persona + custom skill อยู่ที่ `~/Agentic-OS/Context/` (single source)
 **ห้ามแก้ persona/skill ที่อยู่ใน project folder** — แก้ที่ Context/ เท่านั้น
 
-### Personas to load (จาก `~/Documents/Agentic-OS/Context/personas/`)
+### Personas to load (จาก `~/Agentic-OS/Context/personas/`)
 - `anmaioyi.md` — coordinator (ถ้า task มี orchestration)
 - `shihao.md` — Frontend dev (heaveneye web/)
 - Backend dev (yefan) — ใช้ description ใน AGENTS.md นี้
@@ -95,5 +95,5 @@ Dashboard heaveneye แสดงสีเหลืองสำหรับ block
 
 ## Reference
 
-- Personas อยู่ที่ `~/Documents/Agentic-OS/Projects/yt-deathskylife/personas/` (shared across projects)
+- Personas อยู่ที่ `~/Agentic-OS/Projects/yt-deathskylife/personas/` (shared across projects)
 - Quick map ของ heaveneye codebase ดูใน `personas/shihao.md`

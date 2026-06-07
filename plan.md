@@ -30,7 +30,9 @@ Heaveneye **ไม่พยายามเป็น chat platform** เพรา
 
 ---
 
-## 3. Backlog — dispatch-ready 4 tasks
+## 3. Backlog — Phase 3 (✅ ALL DONE 2026-05-27)
+
+> **สถานะ:** 3.1–3.6 เสร็จครบแล้ว (ดู PROGRESS.md). ส่วนล่างนี้เก็บไว้เป็น historical spec record. **งานปัจจุบันอยู่ section 5 (Phase B1 done + Phase C upcoming).**
 
 > **กฎ dispatch:** ทำทีละข้อ ตามลำดับ 3.1 → 3.2 → 3.3 → 3.4. ห้ามทำขนาน. ทุก task ji-ziyue audit ก่อน mark done. ห้ามเพิ่ม chat/spawn/WS infra กลับมา (pivot rule)
 
@@ -156,6 +158,25 @@ Heaveneye **ไม่พยายามเป็น chat platform** เพรา
 8. ji-ziyue audit: save + test webhook + persist after restart
 
 **ทุก step:** `bunx tsc --noEmit` exit 0 + `bun run build` pass ก่อน mark done
+
+---
+
+## 5. Phase B+ — Isometric Office (live record)
+
+### ✅ Phase B1 — Isometric 2.5D office (DONE 2026-06-03)
+view-only dashboard → fake-iso 2.5D office. Spec เต็มที่ `plan.phase-b-isometric.md`.
+- B1.1 iso projection util (`lib/iso.ts`) + diamond floor · B1.2 desks + billboards + depthZ
+- B1.3 sprite characters (Nano Banana PNG + fallback) · B1.3b auto-fit layout
+- B1.4 waddle/delivery บน iso coords · B1.5 depth polish (shadow + room zones + hover)
+- commit 67fd7b1 · bundle 384.63 kB · tsc clean
+
+### 🚧 Phase C — Liveness / task-driven (scoping 2026-06-06)
+office ปัจจุบัน: delivery walk = real status-transition (→blocked/done → เดินไป anmaioyi) แต่ idle = นิ่งสนิท, working ไม่มี pose, ทุกคนเดินไปหา anmaioyi เท่านั้น.
+**เป้า:** ทำให้ office "มีชีวิต" + การเคลื่อนไหวสะท้อน task flow จริง. Spec เต็มที่ `plan.phase-c-liveness.md` (กำลังร่าง).
+- C0 fix WRAPPER_HALF_W stale comment (iso.ts:28 13→5.5) — พ่วงงานแรก
+- C1 idle life (breathing bob ตอนว่าง) · C2 working pose (typing lean + desk glow pulse)
+- C3 dependency-aware handoff (เดินส่งตาม kanban edge จริง ไม่ใช่ทุกคน→anmaioyi)
+- C4 perf + bundle QA (7 ตัว animate พร้อมกันไม่ jank, ≤392 kB)
 
 ---
 

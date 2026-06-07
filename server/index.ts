@@ -407,7 +407,7 @@ app.get('/api/reports/:board', async (c) => {
     'heaveneye-ui': 'heaveneye',
   };
   const project = PROJECT_MAP[board] ?? board;
-  const resultMdPath = join(HOME, 'Documents/Agentic-OS/Projects', project, 'result.events.log');
+  const resultMdPath = join(HOME, 'Agentic-OS/Projects', project, 'result.events.log');
   try {
     const { readFile } = await import('node:fs/promises');
     const content = await readFile(resultMdPath, 'utf8');
