@@ -24,6 +24,11 @@ interface RiveAvatarProps {
   status: AgentStatus;
   color: string;
   size?: 'sm' | 'md';
+  /** Optional numeric px override for the box.  When set, takes precedence
+   *  over `size` so callers can interpolate non-standard sizes (e.g. iso
+   *  depth-aware scaling where a single discrete class is too coarse). */
+  width?: number;
+  height?: number;
   /** Fire an activity event to trigger a burst animation */
   activityEvent?: ActivityEvent | null;
 }
@@ -121,10 +126,16 @@ export function RiveAvatar({
   status,
   color,
   size = 'md',
+  width,
+  height,
   activityEvent,
 }: RiveAvatarProps) {
   const emoji = AGENT_EMOJI[id] ?? '👤';
   const dim   = DIM_CLASS[size];
+  // When width/height are provided, use inline styles so callers can
+  // interpolate non-discrete sizes (e.g. 11.25px for iso depth scaling).
+  // Inline width/height beats the Tailwind className from `dim`.
+  const useCustomSize = width !== undefined || height !== undefined;
   const [burst, setBurst] = useState<ActivityEvent | null>(null);
   const burstTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -144,12 +155,16 @@ export function RiveAvatar({
 
   return (
     <motion.div
-      className={`${dim} rounded-2xl flex items-center justify-center relative`}
+      className={`${useCustomSize ? '' : dim} rounded-2xl flex items-center justify-center relative`}
       animate={burst === 'message' ? { scale: [1, 1.05, 1] } : undefined}
       transition={{ duration: 0.3 }}
       style={{
         background: `linear-gradient(135deg, ${color}55, ${color}22)`,
         border:   `1px solid ${color}66`,
+        // Custom size override (depth-aware scaling in OfficeMap)
+        ...(useCustomSize
+          ? { width: `${width ?? height}px`, height: `${height ?? width}px` }
+          : {}),
         boxShadow: isBlocked
           ? `0 0 0 3px ${color}44, 0 0 20px -4px #f59e0b`
           : undefined,

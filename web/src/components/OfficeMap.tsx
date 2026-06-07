@@ -478,7 +478,21 @@ export function OfficeMap() {
         const shouldLean = isWorking && !isWaddling && !isHovered && !prefersReducedMotion;
         const bobDelay = IDLE_BOB_STAGGER[agent.id] ?? 0;
         const isCore = CORE_AGENTS.has(agent.id);
-        const { row: homeRow } = ISO_GRID[agent.id];
+        const { row: homeRow, col: homeCol } = ISO_GRID[agent.id];
+        // B2 — depth-aware sprite scaling.  Front-row agents (high col+row)
+        // render larger than back-row (low col+row) so the iso depth gradient
+        // is reinforced visually.  Two ranges (core vs non-core) preserve
+        // the visual hierarchy set up in B1.5: core agents stay slightly
+        // larger than non-core across all depths.
+        //   back row  (ziyue  col+row=2) → depthScore 0.25 → smallest
+        //   front row (yefan   col+row=8) → depthScore 1.0  → largest
+        // Caps the existing 12px (core) / 10px (non-core) booleans at the
+        // back, and grows to 14px / 12px at the front — keeps the
+        // wenshu/anmaioyi rows readable while the front row gets the
+        // visual weight the iso perspective implies.
+        const depthScore = (homeCol + homeRow) / 8; // 0 (back) → 1 (front) on 5x5
+        const spriteBase = isCore ? 12 : 10; // px — back-row anchor
+        const spriteSize = spriteBase + depthScore * 2; // back=base, front=base+2
         const active = agent.status !== 'idle';
 
         return (
@@ -764,11 +778,23 @@ export function OfficeMap() {
                     src={CHARACTER_SPRITE[agent.id]}
                     alt={agent.name}
                     onError={() => setSpriteOk((prev) => (prev[agent.id] ? prev : { ...prev, [agent.id]: false }))}
-                    className={`${isCore ? 'w-12 h-12' : 'w-10 h-10'} object-contain`}
+                    // B2 — depth-aware size.  Inline width/height beats the
+                    // Tailwind className so we can interpolate non-discrete
+                    // sizes (e.g. 11.25px for mid-row) the class system can't.
+                    className="object-contain"
+                    style={{ width: `${spriteSize}px`, height: `${spriteSize}px` }}
                     draggable={false}
                   />
                 ) : (
-                  <RiveAvatar id={agent.id} status={agent.status} color={agent.color} size={isCore ? 'sm' : 'sm'} />
+                  <RiveAvatar
+                    id={agent.id}
+                    status={agent.status}
+                    color={agent.color}
+                    // B2 — pass numeric size so the emoji fallback tracks
+                    // the same iso depth gradient as the sprite path.
+                    width={spriteSize}
+                    height={spriteSize}
+                  />
                 )}
               </div>
 

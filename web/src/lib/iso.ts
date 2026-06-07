@@ -34,8 +34,13 @@ export const ISO_ASPECT = 0.5; // Sy / Sx
  * Sx scales accordingly so the office fills the container.
  */
 export const WRAPPER_HALF_W = 5.5;
-/** Auto-fit edge padding — the closest any agent wrapper may come to a container edge. */
-const EDGE_PAD = 3; // %
+/** Auto-fit edge padding — the closest any agent wrapper may come to a container edge.
+ *  B2 — bumped 3% → 5% so the bottom-left agent (wenshu, col=0,row=4 → xRaw=-4)
+ *  has enough left-edge breathing room.  Previously the bbox-centered X0 put
+ *  wenshu at wrapper x ≈ 24px on a 1120px container, leaving only 38px of
+ *  label clearance from the container edge (label needed ≥ 80px from left
+ *  to read cleanly).  5% gives ~56px margin which clears the 80px target. */
+const EDGE_PAD = 5; // %
 
 /**
  * The home grid — agent (col, row) coordinates. B1.3b: kept the same 5x5
