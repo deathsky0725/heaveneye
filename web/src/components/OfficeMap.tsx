@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import type { AgentId, AgentSnapshot, AgentStatus } from '../types';
 import { useStore } from '../store';
 import { RiveAvatar } from './RiveAvatar';
@@ -163,6 +163,20 @@ const EDGES: Array<[AgentId, AgentId]> = [
   ['anmaioyi', 'yefan'],
 ];
 
+// C1 — idle breathing bob per-agent stagger.  delay 0..2s spread so 7
+// agents never sync (spec: each agent out of phase, ดูเป็นธรรมชาติ).
+// Reuses the org-chart hierarchy ordering so the stagger reads as
+// "cascade" (top→down) rather than random.
+const IDLE_BOB_STAGGER: Record<AgentId, number> = {
+  ziyue:    0.0,
+  anmaioyi: 0.6,
+  wenshu:   1.2,
+  yanxin:   1.8,
+  jianfeng: 0.3,
+  shihao:   0.9,
+  yefan:    1.5,
+};
+
 // Agent wrapper dimensions — single source of truth so the desk SVG and
 // the avatar sit at the same iso anchor. The wrapper contains the full
 // cuboid bbox: 2*halfW wide (footprint) and depth+2*halfH tall (box
@@ -191,6 +205,12 @@ const DESK_TOP_Y_PCT = ((ISO_DESK_DEPTH + ISO_DESK_HALF_H + ISO_DESK_PAD) / AGEN
 export function OfficeMap() {
   const agents = useStore((s) => s.agents);
   const openDetailPanel = useStore((s) => s.openDetailPanel);
+  // C1 — a11y: respect prefers-reduced-motion.  motion/react hook
+  // mirrors window.matchMedia('(prefers-reduced-motion: reduce)') and
+  // re-renders on change.  When true, the idle bob is skipped entirely
+  // (return transform-free, no animation) so the office stays static
+  // for users who need it.
+  const prefersReducedMotion = useReducedMotion();
 
   // Position state for each agent (can be different from home desk when walking)
   const [positions, setPositions] = useState<Record<AgentId, Coords>>(() => ({ ...HOME_COORDS }));
@@ -209,6 +229,13 @@ export function OfficeMap() {
   // B1.3 — per-agent sprite availability. Starts true; flips false on <img> error.
   const [spriteOk, setSpriteOk] = useState<Record<AgentId, boolean>>(() => ({
     ziyue: true, anmaioyi: true, wenshu: true, yanxin: true, jianfeng: true, shihao: true, yefan: true,
+  }));
+  // C1 — per-agent hover state.  Hover should suppress the idle bob
+  // (B1.5 hover raise takes over the y channel).  Tracked locally
+  // (not in zustand) because it's UI-local and never needs to outlive
+  // the office view.
+  const [hovered, setHovered] = useState<Record<AgentId, boolean>>(() => ({
+    ziyue: false, anmaioyi: false, wenshu: false, yanxin: false, jianfeng: false, shihao: false, yefan: false,
   }));
 
   const prevStatuses = useRef<Record<AgentId, AgentStatus>>({
@@ -433,6 +460,16 @@ export function OfficeMap() {
         const sparkleAt = sparkles[agent.id];
         const isThinking = agent.status === 'thinking';
         const isWorking = agent.status === 'working';
+        // C1 — idle bob trigger.  Only when the agent is at rest (not
+        // waddling/walking, not hover, not working, not thinking) and
+        // the user hasn't opted out of motion.  Hover state lives on
+        // the inner motion.div (whileHover y:-2.5) and is intentionally
+        // NOT checked here — the wrapper-level hover raise and the
+        // idle bob use different motion nodes so they compose cleanly.
+        const isHovered = hovered[agent.id] ?? false;
+        const isIdle = agent.status === 'idle' && !isWaddling && !isWorking && !isThinking && !isHovered;
+        const shouldBob = isIdle && !prefersReducedMotion;
+        const bobDelay = IDLE_BOB_STAGGER[agent.id] ?? 0;
         const isCore = CORE_AGENTS.has(agent.id);
         const { row: homeRow } = ISO_GRID[agent.id];
         const active = agent.status !== 'idle';
@@ -503,13 +540,41 @@ export function OfficeMap() {
             >
               <motion.div
                 animate={{
+                  // C1 — idle breathing bob.  Y oscillates ±1.5px around 0
+                  // (subtle, ฟีลหายใจ).  Compose with waddle by ADDING
+                  // values instead of replacing — waddle is [-4,4] rotate
+                  // and [0,-3] y, idle bob is [−1.5,1.5] y.  When both
+                  // are active the waddle wins on y (we only flip to
+                  // waddle values here when isWaddling).  When neither,
+                  // y stays at 0 (no animation).  `rotate` is waddle-only;
+                  // idle bob never rotates.
                   rotate: isWaddling ? [-4, 4] : 0,
-                  y: isWaddling ? [0, -3] : 0,
+                  y: isWaddling
+                    ? [0, -3]
+                    : shouldBob
+                    ? [-1.5, 1.5]
+                    : 0,
                 }}
-                transition={isWaddling ? waddleTransition : { duration: 0 }}
+                transition={
+                  isWaddling
+                    ? waddleTransition
+                    : shouldBob
+                    ? {
+                        y: {
+                          repeat: Infinity,
+                          repeatType: 'mirror',
+                          duration: 2.8,
+                          ease: 'easeInOut',
+                          delay: bobDelay,
+                        },
+                      }
+                    : { duration: 0 }
+                }
                 className="flex flex-col items-center cursor-pointer group"
                 style={{ transformOrigin: '50% 100%' }}
                 onClick={() => openDetailPanel(agent.id)}
+                onHoverStart={() => setHovered((prev) => ({ ...prev, [agent.id]: true }))}
+                onHoverEnd={() => setHovered((prev) => ({ ...prev, [agent.id]: false }))}
                 /* B1.5 — hover state lives on the wrapper so the inner
                     avatar/label can react via group-hover (CSS) while
                     the motion waddle still drives rotate/y. The raise
