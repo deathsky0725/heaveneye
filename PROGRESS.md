@@ -3,8 +3,8 @@
 > **Status: view-only dashboard (post-pivot 2026-05-23, all phases complete 2026-05-27)**
 > สั่งงาน agent จริง = ใช้ terminal/claude CLI/gemini CLI โดยตรง. Heaveneye = ดูสถานะ + ปุ่ม control แค่ที่จำเป็น
 
-Last updated: 2026-06-06 by ji-ziyue
-Current phase: **Phase B1 isometric office COMPLETE (5/5) — Phase C (liveness / task-driven) being scoped**
+Last updated: 2026-06-09 by anmaioyi
+Current phase: **Phase C Liveness — C3 STEP 1+2 + C4 dispatched, in progress**
 
 ---
 
@@ -98,3 +98,26 @@ gateways (launchd 24/7)         Bun + Hono :7878         React 19 + Zustand
 
 **Autonomous flow proven:** ji-ziyue directive → inbox-watcher daemon → anmaioyi (M3) audit B1.5 → unblock+complete → outbox+Discord report. No manual poke, no approval-asking (Directive Authority Protocol works).
 build 384.63 kB · tsc clean · no new npm deps.
+
+## ✅ Phase C — Liveness / Task-Driven Office (2026-06-06 → in progress)
+
+5 sub-tasks C0→C0.1→C1→C2→C3→C4 · ji-ziyue เขียน spec `plan.phase-c-liveness.md` · เมี่ยวอี orchestrate + audit
+
+| Task | ID | Status | Notes |
+|------|----|--------|-------|
+| C0 — fix WRAPPER_HALF_W stale comment (13→5.5) | t_39d33379 | ✅ done | commit c06ab5c |
+| C0.1 — sync value + layout polish + bbox centering | t_e57af653 | ✅ done | commit7c09056 |
+| C1 — idle breathing bob + stagger + reduced-motion | t_76082056 | ✅ done | commit 4537cbc |
+| C2 — working pose + desk glow pulse (3-state desk) | t_953ab609 | ✅ done | commit d409491 |
+| C3 STEP 0+1+2 — dependency-aware handoff (investigate→backend resolveHandoff+SSE→frontend triggerWalk) | t_197798e4 | ✅ done | yefan; anmaioyi audit PASS; committed |
+| C4 — perf + bundle QA + aesthetic check | t_6d9adfe6 | 🔄 ready | shihao |
+
+> หมายเหตุ: C3 ทั้ง STEP 0/1/2 landed รวมใน t_197798e4 — task ลูก t_471faa34 (STEP1) / t_b01dea69 (STEP2) ซ้ำซ้อน รอ anmaioyi reconcile. **Visual verify ของ handoff walk + C4 perf = ยังค้าง** → จะผ่าน QA gate (yanxin) ตาม workflow ใหม่
+
+**กฎ Phase C:** ห้าม npm dep ใหม่ · bundle ≤ 392kB · ห้ามรื้อ B1 · prefers-reduced-motion ทุก animation · C4 = ji-ziyue FINAL AUDIT
+
+**M3 quota incident (2026-06-08):** C3 crash2xเพราะ MiniMax-M3 ชน 5h cap (429) → ji-ziyue revert ทั้ง 6 workers M3→M2.7 → stable baseline M2.7 ต่อไป
+
+**Team change (2026-06-09):** yanxin (เหยียนซิน) Copywriter → **QA Engineer (E2E)** — gate ก่อน audit, no-dep checklist `docs/qa-e2e-checklist.md`
+
+**Committed 2026-06-09 (ji-ziyue, แยก 3 กลุ่ม):** bug1 gateway-liveness (gateway.ts + system-health.ts + UsagePanel M3 label) · Phase C C3 handoff (engine/kanban/index/types ×2/OfficeMap/TaskFeedSidebar) · yanxin QA role (config.ts label + checklist)

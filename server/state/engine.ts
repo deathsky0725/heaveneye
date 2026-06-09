@@ -558,6 +558,67 @@ class StateEngine {
     return this.kanbanBuffer.slice(-n);
   }
 
+  /**
+   * Phase C — handoff resolution.
+   *
+   * When a task transitions to `completed`, figure out the next assignee so
+   * the office can route the delivery walk to the right desk instead of
+   * always going to anmaioyi.
+   *
+   * Strategy: query the board's kanban.db for any *child* tasks linked via
+   * `task_links(parent_id → child_id)`. Among children, prefer one that is
+   * already running/claimed (i.e. the work has already been picked up — the
+   * walk should target THAT desk, because the handoff is "from upstream to
+   * downstream"). Fall back to a `ready` child. If there is no child, return
+   * `null` and the caller falls back to the orchestrator (anmaioyi).
+   *
+   * Why a method (not inline in the watcher):
+   *   - Centralised so any future call site (e.g. an unblock-driven handoff)
+   *     uses the same query shape.
+   *   - Keeps the watcher focused on translation; resolution policy lives
+   *     with the engine.
+   *
+   * Returns: AgentId of the next assignee, or null (fallback to anmaioyi).
+   */
+  resolveHandoff(board: string, parentTaskId: string): AgentId | null {
+    try {
+      const dbPath = join(HOME, '.hermes', 'kanban', 'boards', board, 'kanban.db');
+      if (!require('node:fs').existsSync(dbPath)) return null;
+      const db = new (require('bun:sqlite').Database)(dbPath, { readonly: true });
+      try {
+        // Prefer a child that is already active (running/claimed) — the
+        // delivery walk should target the agent who has already picked the
+        // work up. Fall back to `ready` (queued, not yet claimed).
+        const rows = db.query(`
+          SELECT t.assignee, t.status FROM task_links l
+          JOIN tasks t ON t.id = l.child_id
+          WHERE l.parent_id = ?
+            AND t.assignee IS NOT NULL
+            AND t.status IN ('running', 'claimed', 'ready', 'todo')
+          ORDER BY
+            CASE t.status
+              WHEN 'running' THEN 0
+              WHEN 'claimed' THEN 1
+              WHEN 'ready'   THEN 2
+              WHEN 'todo'    THEN 3
+              ELSE 4
+            END ASC
+          LIMIT 1
+        `).all(parentTaskId) as { assignee: string; status: string }[];
+        if (rows.length === 0) return null;
+        const assignee = rows[0]!.assignee;
+        if (assignee in AGENTS) return assignee as AgentId;
+        return null;
+      } finally {
+        db.close();
+      }
+    } catch (e) {
+      // Non-fatal — caller will fall back to anmaioyi
+      console.warn(`[engine] resolveHandoff(${board}, ${parentTaskId}) failed:`, e);
+      return null;
+    }
+  }
+
   // === Notification log ===
   private notificationIdCounter = 0;
   private notificationBuffer: NotificationEntry[] = [];

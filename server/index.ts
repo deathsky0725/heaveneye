@@ -208,6 +208,29 @@ app.get('/api/events', (c) => {
   return c.json({ events: state.getKanbanEvents(limit) });
 });
 
+// Phase C — dev-only handoff verifier. Calls the same resolver the watcher
+// would use, then emits a synthetic handoff event into the kanban buffer so
+// the frontend (or curl) can see the resulting `to_agent` field. Gated by
+// NODE_ENV !== 'production' so it never leaks into a deploy.
+if (process.env.NODE_ENV !== 'production') {
+  app.post('/api/test/handoff', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { board = 'heaveneye-ui', taskId, from = 'yefan' } = body as { board?: string; taskId?: string; from?: string };
+    if (!taskId) return c.json({ error: 'taskId required' }, 400);
+    const to = state.resolveHandoff(board, taskId);
+    state.onKanbanEvent({
+      ts: new Date().toISOString(),
+      agent: from as AgentId,
+      kind: 'handoff',
+      task_id: taskId,
+      from_agent: from as AgentId,
+      to_agent: to,
+      payload: { source: 'test_endpoint' },
+    });
+    return c.json({ ok: true, from, to, taskId });
+  });
+}
+
 app.get('/api/notifications', (c) => {
   const limit = Math.min(Number(c.req.query('limit') ?? 50), 50);
   return c.json(state.getNotifications(limit));

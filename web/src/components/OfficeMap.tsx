@@ -260,6 +260,22 @@ export function OfficeMap() {
     }));
   };
 
+  // C3 — listen for handoff events from SSE to route delivery walks to
+  // the correct assignee (from `to_agent` field, not hardcoded anmaioyi).
+  const events = useStore((s) => s.events);
+  useEffect(() => {
+    const handoff = events[0];
+    if (!handoff || handoff.kind !== 'handoff') return;
+    const { from_agent, to_agent } = handoff;
+    if (!from_agent) return;
+    // `prefers-reduced-motion`: skip animation, still route logically
+    if (prefersReducedMotion) return;
+    // Fallback: no handoff edge in SSE event → route to anmaioyi as safety net
+    triggerWalk(from_agent, to_agent ?? 'anmaioyi');
+    // Deduplicate: only react to the newest event (events[0] is newest)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
+
   useEffect(() => {
     for (const agent of agents) {
       const prev = prevStatuses.current[agent.id];

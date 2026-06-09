@@ -37,10 +37,18 @@ export interface KanbanEventEntry {
   id: number;       // monotonic counter — NOT the kanban event id
   ts: string;      // ISO8601
   agent: AgentId;
-  kind: 'claimed' | 'spawned' | 'completed' | 'blocked' | 'heartbeat' | 'decomposed' | 'unblocked';
+  kind: 'claimed' | 'spawned' | 'completed' | 'blocked' | 'heartbeat' | 'decomposed' | 'unblocked' | 'handoff';
   task_id: string;
   task_title?: string;
   payload?: Record<string, any>;
+  // Phase C — handoff routing. `from_agent` = the agent whose work just
+  // ended. `to_agent` = the next assignee resolved from task_links (child
+  // task with status=ready/running), or null when there is no downstream
+  // task and the work flows back to the orchestrator (anmaioyi).
+  from_agent?: AgentId;
+  to_agent?: AgentId | null;
+  // C3 — parent task whose completion triggered this handoff (informational)
+  parent_task_id?: string;
 }
 
 export interface InboxEntry {

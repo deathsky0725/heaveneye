@@ -8,8 +8,9 @@ const KIND_ICON: Record<KanbanEventEntry['kind'], string> = {
   blocked:    '⏸',
   decomposed: '📋',
   spawned:    '🔧',
-  heartbeat: '💓',
+  heartbeat:  '💓',
   unblocked:  '▶️',
+  handoff:    '🤝',
 };
 
 const KIND_LABEL: Record<KanbanEventEntry['kind'], string> = {
@@ -20,6 +21,7 @@ const KIND_LABEL: Record<KanbanEventEntry['kind'], string> = {
   spawned:    'spawned',
   heartbeat:  'heartbeat',
   unblocked:  'unblocked',
+  handoff:    'handoff',
 };
 
 function formatRelativeTime(iso: string): string {

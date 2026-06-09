@@ -96,6 +96,28 @@ function handleEvent(row: KanbanEventRow, boardSlug: string, db: Database): void
       dispatchNotification(db, row.task_id, taskTitle, 'completed', agent);
       relayStore.onRelayFired(agent, row.task_id);
       appendResultMdEntry({ timestamp: new Date().toISOString(), agent, event: 'completed', taskId: row.task_id, taskTitle, boardSlug });
+
+      // Phase C — dependency-aware handoff.
+      // Resolve the next assignee from task_links(child of this task) so the
+      // office can route the delivery walk to the right desk. Emit a
+      // sibling `handoff` event the frontend can listen for.
+      try {
+        const toAgent = state.resolveHandoff(boardSlug, row.task_id);
+        // toAgent may be null → frontend falls back to anmaioyi.
+        state.onKanbanEvent({
+          ts: new Date().toISOString(),
+          agent,
+          kind: 'handoff',
+          task_id: row.task_id,
+          task_title: taskTitle,
+          from_agent: agent,
+          to_agent: toAgent,
+          parent_task_id: row.task_id,
+          payload: { source: 'completed' },
+        });
+      } catch (e) {
+        console.warn(`[kanban] handoff resolve failed for ${row.task_id}:`, e);
+      }
       return;
 
     case 'crashed':

@@ -28,10 +28,16 @@ export interface KanbanEventEntry {
   id: number;
   ts: string;
   agent: AgentId;
-  kind: 'claimed' | 'spawned' | 'completed' | 'blocked' | 'heartbeat' | 'decomposed' | 'unblocked';
+  // C3 — 'handoff' fires when a task completes and the engine resolves
+  // a downstream assignee via task_links. `from_agent` = the completing
+  // agent, `to_agent` = the next assignee (or null → fallback anmaioyi).
+  kind: 'claimed' | 'spawned' | 'completed' | 'blocked' | 'heartbeat' | 'decomposed' | 'unblocked' | 'handoff';
   task_id: string;
   task_title?: string;
   payload?: Record<string, unknown>;
+  from_agent?: AgentId;
+  to_agent?: AgentId | null;
+  parent_task_id?: string;
 }
 
 export type ServerEvent =
