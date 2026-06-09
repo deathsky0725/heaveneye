@@ -126,18 +126,28 @@ export function stopGateway(profile: string): GatewayInfo {
 }
 
 /**
- * Find PID of a running gateway process for a given profile.
- * Uses pgrep to search for `hermes gateway run --profile <profile>`.
+ * Find PID of a running hermes process for a given profile.
+ * Matches ANY hermes mode (chat / gateway / dashboard / cron / etc.)
+ * that was launched with `--profile <profile>` (or `-p <profile>`) so
+ * a live chat / dashboard session counts as "alive" the same as a
+ * gateway — the dashboard's "down" indicator should mean
+ * "no process for this profile at all", not "no gateway subprocess".
  */
 function findGatewayPid(profile: string): number | null {
   const { execSync } = require('node:child_process') as typeof import('node:child_process');
+  // Two patterns joined with `|`:
+  //   1. long `--profile <p>`   (e.g. `hermes ... --profile anmaioyi ...`)
+  //   2. short `-p <p>`         (e.g. `hermes -p anmaioyi ...`)
+  // The whole expression is anchored on word boundaries around the
+  // profile name so `anmaioyi2` doesn't accidentally match `anmaioyi`.
+  const pattern = `hermes[^[:space:]]*.*(--profile|-p)[[:space:]]+${profile}([[:space:]]|$)`;
+  const cmd = `ps -A -o pid=,command= | grep -E '${pattern}' | grep -v 'grep' | head -1`;
   try {
-    const out = execSync(`ps aux | grep "hermes.*gateway" | grep "${profile}" | grep -v grep`, { encoding: 'utf8' });
+    const out = execSync(cmd, { encoding: 'utf8', shell: '/bin/sh' });
     const line = out.trim();
     if (!line) return null;
-    // Format: "ben  29376  0.0  ..." — PID is the 2nd field (index 1 after split on whitespace)
     const parts = line.split(/\s+/);
-    const pid = parseInt(parts[1] ?? '', 10);
+    const pid = parseInt(parts[0] ?? '', 10);
     return isNaN(pid) ? null : pid;
   } catch {
     return null;

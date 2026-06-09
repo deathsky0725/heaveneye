@@ -67,7 +67,12 @@ function getProcessResources(pid: number): Promise<{ cpu: number; ram: number }>
 
 async function checkGateway(profile: AgentId): Promise<GatewayHealth> {
   const now = new Date().toISOString();
-  const procs = await ps(`--profile ${profile} gateway run`);
+  // Loosened filter: match any hermes mode launched with --profile <p>
+  // (chat / gateway / dashboard / cron / etc.) — consistent with
+  // server/lib/gateway.ts:findGatewayPid. A live dashboard session
+  // counts as 'alive' the same as a gateway; "down" should mean
+  // "no process for this profile at all", not "no gateway subprocess".
+  const procs = await ps(`--profile ${profile}`);
   if (procs.length === 0) {
     return { profile, pid: null, startedAt: null, alive: false, lastCheckedAt: now, cpuPercent: 0, ramBytes: 0 };
   }

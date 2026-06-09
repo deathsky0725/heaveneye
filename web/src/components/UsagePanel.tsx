@@ -23,6 +23,7 @@ const MODEL_LABELS: Record<string, string> = {
   'claude-opus-4': 'Claude Opus 4.7',
   'claude-sonnet-4-7': 'Claude Sonnet 4.7',
   'claude-sonnet-4': 'Claude Sonnet 4.7',
+  'mini-max-m3': 'MiniMax-M3',
   'mini-max-m2.7': 'MiniMax-M2.7',
   'mini-max-m2': 'MiniMax-M2',
   'unknown': 'Unknown',
