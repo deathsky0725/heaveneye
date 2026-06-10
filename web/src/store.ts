@@ -1,18 +1,27 @@
 import { create } from 'zustand';
-import type { AgentId, AgentSnapshot, ServerEvent, Usage5hEntry, InboxEntry, KanbanEventEntry, SystemHealth, NotificationEntry } from './types';
+import type { AgentId, AgentSnapshot, ServerEvent, Usage5hEntry, InboxEntry, KanbanEventEntry, SystemHealth, NotificationEntry, CrashNotificationEntry } from './types';
+import type { ActivityEvent } from './components/RiveAvatar';
+import { useToastStore } from './store/toastStore';
 
 interface State {
   agents: AgentSnapshot[];
   connected: boolean;
   usage5h: Usage5hEntry[];
   inbox: InboxEntry[];
-  inboxFlash: string | null; // id of the newly appended entry
+  inboxFlash: string | null;
   events: KanbanEventEntry[];
   systemHealth: SystemHealth | null;
   notifications: NotificationEntry[];
+  crashNotifications: CrashNotificationEntry[];
+  crashNotificationLastChecked: number;
   killError: string | null;
   killSuccess: string | null;
   detailPanelId: AgentId | null;
+  // Particle burst triggers — keyed by edge id (e.g. "ziyue-anmaioyi")
+  activeParticleBursts: Record<string, number>;
+  // Per-agent activity event triggers — set by SSE event handlers
+  activityTriggers: Record<string, { ts: number; event: ActivityEvent }>;
+  triggerActivity: (agentId: AgentId, event: ActivityEvent) => void;
   apply: (ev: ServerEvent) => void;
   setConnected: (v: boolean) => void;
   setUsage5h: (v: Usage5hEntry[]) => void;
@@ -21,9 +30,25 @@ interface State {
   clearKillFeedback: () => void;
   openDetailPanel: (id: AgentId) => void;
   closeDetailPanel: () => void;
+  triggerParticleBurst: (edgeId: string) => void;
+  addCrashNotifications: (entries: CrashNotificationEntry[]) => void;
+  dispatchTauriNotification: (entry: CrashNotificationEntry) => Promise<void>;
+  selectedBoard: string;
+  setSelectedBoard: (board: string) => void;
 }
 
-export const useStore = create<State>((set) => ({
+// Maps receiving agent → edge id used by DataFlowParticles
+// Must match EDGES in ConnectionLines.tsx and DataFlowParticles.tsx
+const INBOUND_EDGE_MAP: Record<string, string> = {
+  anmaioyi:  'ziyue-anmaioyi',
+  wenshu:    'anmaioyi-wenshu',
+  yanxin:    'anmaioyi-yanxin',
+  jianfeng:  'anmaioyi-jianfeng',
+  shihao:    'anmaioyi-shihao',
+  yefan:     'anmaioyi-yefan',
+};
+
+export const useStore = create<State>((set, get) => ({
   agents: [],
   connected: false,
   usage5h: [],
@@ -32,28 +57,64 @@ export const useStore = create<State>((set) => ({
   events: [],
   systemHealth: null,
   notifications: [],
+  crashNotifications: [],
+  crashNotificationLastChecked: 0,
   killError: null,
   killSuccess: null,
   detailPanelId: null,
+  activeParticleBursts: {},
+  activityTriggers: {} as Record<string, { ts: number; event: ActivityEvent }>,
   setConnected: (v) => set({ connected: v }),
   setUsage5h: (v) => set({ usage5h: v }),
   markInboxFlashShown: () => set({ inboxFlash: null }),
   clearKillFeedback: () => set({ killError: null, killSuccess: null }),
   openDetailPanel: (id) => set({ detailPanelId: id }),
   closeDetailPanel: () => set({ detailPanelId: null }),
+  triggerParticleBurst: (edgeId) => {
+    const BURST_DURATION_MS = 1200;
+    set((s) => ({
+      activeParticleBursts: { ...s.activeParticleBursts, [edgeId]: Date.now() + BURST_DURATION_MS },
+    }));
+  },
+  triggerActivity: (agentId, event) => {
+    set((s) => ({
+      activityTriggers: { ...s.activityTriggers, [agentId]: { ts: Date.now(), event } },
+    }));
+  },
+  selectedBoard: 'heaveneye-ui',
+  setSelectedBoard: (board) => set({ selectedBoard: board }),
+  addCrashNotifications: (entries) => {
+    set((s) => ({
+      crashNotifications: [...s.crashNotifications, ...entries].slice(-50),
+      crashNotificationLastChecked: Date.now(),
+    }));
+  },
+  dispatchTauriNotification: async (entry) => {
+    if (typeof (window as any).__TAURI__ === 'undefined') return;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('send_notification', { title: entry.title, body: entry.body });
+    } catch (e) {
+      console.warn('[store] dispatchTauriNotification failed:', e);
+    }
+  },
   killAgent: async (id) => {
     const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
+    const toast = useToastStore.getState().addToast;
     try {
       const res = await fetch(`${base}/api/agent/${id}/kill`, { method: 'POST' });
       const data = await res.json() as { killed: boolean; pid: number | null; signal: string };
       if (data.killed) {
         set({ killSuccess: `Worker PID ${data.pid} killed (signal ${data.signal})`, killError: null });
+        toast(`Worker ${data.pid} killed`, 'success');
       } else {
         set({ killError: 'No active worker found for this agent', killSuccess: null });
+        toast('No active worker found', 'warning');
       }
       return data;
     } catch {
       set({ killError: 'Failed to reach server', killSuccess: null });
+      toast('Failed to reach server', 'error');
       return { killed: false, pid: null, signal: 'none' };
     }
   },
@@ -61,6 +122,13 @@ export const useStore = create<State>((set) => ({
     if (ev.type === 'snapshot') {
       set({ agents: ev.agents });
     } else if (ev.type === 'patch') {
+      const prev = get().agents.find((a) => a.id === ev.agent.id);
+      const wasInactive = !prev || (prev.status !== 'working' && prev.status !== 'thinking');
+      const isNowActive  = ev.agent.status === 'working' || ev.agent.status === 'thinking';
+      if (wasInactive && isNowActive) {
+        const inboundEdge = INBOUND_EDGE_MAP[ev.agent.id];
+        if (inboundEdge) get().triggerParticleBurst(inboundEdge);
+      }
       set((s) => ({
         agents: s.agents.map((a) => (a.id === ev.agent.id ? ev.agent : a)),
       }));
@@ -75,13 +143,13 @@ export const useStore = create<State>((set) => ({
       set({ systemHealth: ev.health });
     } else if (ev.type === 'notification') {
       set((s) => ({ notifications: [ev.entry, ...s.notifications].slice(0, 50) }));
+    } else if (ev.type === 'agent_activity') {
+      useStore.getState().triggerActivity(ev.agentId, ev.event as ActivityEvent);
     }
   },
 }));
 
 export function connectStream() {
-  // Vite dev proxy buffers SSE — connect direct to backend in dev to get
-  // realtime events. In prod build (`vite build`), same-origin server.
   const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
   let es: EventSource | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -99,7 +167,6 @@ export function connectStream() {
     };
     es.onerror = () => {
       useStore.getState().setConnected(false);
-      // bun --watch restarts the server frequently in dev; auto-reconnect.
       es?.close();
       es = null;
       if (!stopped) retryTimer = setTimeout(open, 1500);
@@ -118,18 +185,14 @@ const POLL_INTERVAL_MS = 30_000;
 
 export function startUsage5hPolling() {
   const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
-
   const poll = async () => {
     try {
       const res = await fetch(`${base}/api/usage/5h`);
       if (!res.ok) return;
       const data = await res.json() as { usage: Usage5hEntry[] };
       useStore.getState().setUsage5h(data.usage);
-    } catch {
-      // silently ignore — usage panel just doesn't update
-    }
+    } catch { /* silently ignore */ }
   };
-
   poll();
   setInterval(poll, POLL_INTERVAL_MS);
 }
@@ -139,7 +202,7 @@ export function fetchInitialInbox() {
   fetch(`${base}/api/inbox`)
     .then((res) => res.ok ? res.json() : Promise.reject())
     .then((entries: InboxEntry[]) => useStore.setState({ inbox: entries }))
-    .catch(() => { /* inbox stays empty — SSE will append new entries */ });
+    .catch(() => {});
 }
 
 export function fetchInitialEvents() {
@@ -147,7 +210,7 @@ export function fetchInitialEvents() {
   fetch(`${base}/api/events?limit=50`)
     .then((res) => res.ok ? res.json() : Promise.reject())
     .then((data: { events: KanbanEventEntry[] }) => useStore.setState({ events: data.events.reverse() }))
-    .catch(() => { /* events stay empty — SSE will prepend new ones */ });
+    .catch(() => {});
 }
 
 export function fetchInitialHealth() {
@@ -155,5 +218,5 @@ export function fetchInitialHealth() {
   fetch(`${base}/api/health`)
     .then((res) => res.ok ? res.json() : Promise.reject())
     .then((health: SystemHealth) => useStore.setState({ systemHealth: health }))
-    .catch(() => { /* health stays null — SSE will update */ });
+    .catch(() => {});
 }

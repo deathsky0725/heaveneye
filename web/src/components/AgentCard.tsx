@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { AgentSnapshot, AgentStatus } from '../types';
-import { RiveAvatar } from './RiveAvatar';
+import { RiveAvatar, type ActivityEvent } from './RiveAvatar';
 import { TokenBadge } from './TokenBadge';
 import { StatChart } from './StatChart';
+import { GatewayButton } from './GatewayButton';
+import { HealthScoreBadge } from './HealthScoreBadge';
 import { idleDuration, IDLE_COLOR, alertDuration, ALERT_COLOR } from '../lib/idle';
 import { useStore } from '../store';
 
@@ -53,7 +55,24 @@ export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; co
   const [timelineDots, setTimelineDots] = useState<{ color: string; label: string }[]>([]);
   const [relayPending, setRelayPending] = useState(false);
   const [lastRelayAgo, setLastRelayAgo] = useState<string | null>(null);
+  const [activityEvent, setActivityEvent] = useState<'message' | 'task_done' | 'error' | null>(null);
   const openDetailPanel = useStore((s) => s.openDetailPanel);
+  const activityTriggers = useStore((s) => s.activityTriggers);
+  const triggerActivity = useStore((s) => s.triggerActivity);
+
+  // Consume activity triggers from the store
+  const prevTrigger = useRef<{ ts: number; event: ActivityEvent } | null>(null);
+  useEffect(() => {
+    const trigger = activityTriggers[agent.id];
+    if (!trigger) return;
+    if (prevTrigger.current?.ts === trigger.ts) return; // already consumed
+    prevTrigger.current = trigger;
+    setActivityEvent(trigger.event);
+    // Clear the trigger so we don't re-fire on next render
+    triggerActivity(agent.id, trigger.event);
+    const timer = setTimeout(() => setActivityEvent(null), 800);
+    return () => clearTimeout(timer);
+  }, [activityTriggers[agent.id], agent.id, triggerActivity]);
 
   useEffect(() => {
     // Fetch timeline dots
@@ -62,9 +81,19 @@ export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; co
       .then((r) => r.json())
       .then((data: { timeline?: TimelineEntry[] }) => {
         const events = data.timeline ?? [];
-        // API returns newest first; reverse so oldest is leftmost
-        const reversed = [...events].reverse();
-        const dots = reversed.slice(0, 8).map((ev: TimelineEntry): { color: string; label: string } => {
+        // Prioritize non-token events so dots are colorful (green/amber vs all-blue).
+        // Sort: session events first, then kanban, then token_usage, then others.
+        const PRIORITY: Record<string, number> = {
+          session_start: 0,
+          session_end:   0,
+          kanban_event:  1,
+          token_usage:   2,
+          other:         3,
+        };
+        const sorted = [...events].sort((a, b) =>
+          (PRIORITY[a.type] ?? 3) - (PRIORITY[b.type] ?? 3)
+        );
+        const dots = sorted.slice(0, 8).map((ev: TimelineEntry): { color: string; label: string } => {
           switch (ev.type) {
             case 'token_usage':   return { color: 'bg-blue-400',   label: 'token' };
             case 'session_start': return { color: 'bg-green-400',  label: 'session' };
@@ -99,17 +128,35 @@ export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; co
         }
       })
       .catch(() => {});
-  }, [agent.id]);
+  }, [activityTriggers, agent.id, triggerActivity]);
+
+  const isActive = agent.status !== 'idle';
+  const glowStyle = isActive
+    ? `--agent-color: ${agent.color}; box-shadow: 0 0 24px -6px ${agent.color}, inset 0 1px 0 rgba(255,255,255,0.10);`
+    : 'box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);';
 
   return (
     <div
       data-agent-id={agent.id}
-      className={`rounded-2xl backdrop-blur-sm bg-white/5 border border-white/10 hover:border-white/20 transition cursor-pointer ${agent.status === 'blocked' ? 'border-l-4 border-amber-400' : ''} ${compact ? 'p-3' : 'p-5'}`}
-      style={{ boxShadow: agent.status !== 'idle' ? `0 0 24px -8px ${agent.color}` : undefined }}
+      className={`relative rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden
+        ${agent.status === 'blocked' ? 'border-l-4 border-amber-400 glass-surface' : 'glass-surface border-white/10 hover:border-white/20'}
+        ${compact ? 'p-3' : 'p-5'}`}
+      style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 60%), rgba(15,23,42,0.7)` }}
       onClick={() => openDetailPanel(agent.id)}
     >
+      {/* Ambient glow behind active agents */}
+      {isActive && (
+        <div
+          className="absolute inset-0 rounded-2xl pointer-events-none"
+          style={{
+            background: `radial-gradient(ellipse at 50% 0%, ${agent.color}18 0%, transparent 70%)`,
+            boxShadow: `0 0 40px -10px ${agent.color}`,
+            animation: 'ambient-glow 2.5s ease-in-out infinite',
+          }}
+        />
+      )}
       <div className="flex items-start gap-3">
-        <RiveAvatar id={agent.id} status={agent.status} color={agent.color} size={compact ? 'sm' : 'md'} />
+        <RiveAvatar id={agent.id} status={agent.status} color={agent.color} size={compact ? 'sm' : 'md'} activityEvent={activityEvent} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold truncate" style={{ color: agent.color }}>{agent.name}</h2>
@@ -132,8 +179,10 @@ export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; co
             ))}
           </div>
           <div className="mt-2 flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${STATUS_DOT[agent.status]}`} />
-            <span className="text-sm text-slate-200">{STATUS_LABEL[agent.status]}</span>
+            <span className={`w-2 h-2 rounded-full ${relayPending ? 'bg-amber-400' : STATUS_DOT[agent.status]}`} />
+            <span className="text-sm text-slate-200">
+              {relayPending ? 'รอ relay' : STATUS_LABEL[agent.status]}
+            </span>
             {relayPending && (
               <span className="ml-1 text-[10px] rounded px-1.5 py-0.5 bg-amber-400/15 text-amber-400 border border-amber-400/20">
                 ● HM2 รอ relay
@@ -144,6 +193,10 @@ export function AgentCard({ agent, compact = false }: { agent: AgentSnapshot; co
                 relay {lastRelayAgo}
               </span>
             )}
+            {agent.id !== 'ziyue' && (
+              <GatewayButton profile={agent.id} />
+            )}
+            <HealthScoreBadge agentId={agent.id} compact />
           </div>
 
           {/* Alert banner — working/think agents inactive > 5 min */}

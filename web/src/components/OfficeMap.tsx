@@ -1,10 +1,70 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import type { AgentId, AgentSnapshot, AgentStatus } from '../types';
 import { useStore } from '../store';
 import { RiveAvatar } from './RiveAvatar';
 import { IsoDesk } from './IsoDesk';
 import { isoProject, depthZ, depthZFromCoords, ISO_GRID, GRID_SIZE, AUTO_FIT } from '../lib/iso';
+
+// ─── B1.5 — Room zone overlay (3 large iso diamonds) ────────────────────────
+// Each zone covers the iso tile range that holds its agents.  Rendered as
+// a single SVG polygon (one per zone) BEHIND the floor tiles, so the
+// checkerboard tile pattern shows on top while the zone colour tints the
+// underlying area.  Zones are defined in grid coords (col,row) and the
+// diamond vertices are the four corner tiles of each zone's bbox — using
+// tile corners (not centers) so adjacent zones share edges without gaps.
+//
+// Layout (from ISO_GRID):
+//   - Core Room  : ziyue at (2,0). Zone covers col 1..3, row 0..1.
+//   - Review Bay : anmaioyi at (2,2). Zone covers col 1..3, row 1..3.
+//   - Developer  : wenshu/yanxin/jianfeng/shihao/yefan at row 4.
+//                  Zone covers col 0..4, row 3..4.
+// Colour choices:
+//   - Core   = indigo  (matches the room's strategic / top-of-tree vibe)
+//   - Review = cyan    (anmaioyi's role; reflects "review/check" cyan accent)
+//   - Dev    = emerald (matches the working-status border colour, ties the
+//                        zone visually to "agents actively working")
+// B1.5 — each zone also gets a thin stroke + a soft top-edge label so
+// the boundary reads as an "office floor" not just a coloured shape.
+const ROOM_ZONES = [
+  {
+    name: 'Core Room',
+    color: '99, 102, 241', // indigo-500
+    bbox: { colMin: 1, colMax: 3, rowMin: 0, rowMax: 1 },
+  },
+  {
+    name: 'Review Bay',
+    color: '34, 211, 238', // cyan-400
+    bbox: { colMin: 1, colMax: 3, rowMin: 1, rowMax: 3 },
+  },
+  {
+    name: 'Developer Bay',
+    color: '16, 185, 129', // emerald-500
+    bbox: { colMin: 0, colMax: 4, rowMin: 3, rowMax: 4 },
+  },
+] as const;
+
+/**
+ * The four "corner tiles" of a rectangular grid bbox project to a single
+ * large iso diamond on screen.  Returns the diamond's 4 vertices in the
+ * viewBox 0..100 space (so they line up with the diamond floor tiles,
+ * which use the same isoProject function).  We use the bbox corner tiles
+ * — not the agent tiles — so the zone fully covers its area, including
+ * the unoccupied floor around the agent.
+ */
+function zoneDiamond(bbox: { colMin: number; colMax: number; rowMin: number; rowMax: number }) {
+  // The 4 corners of the bbox (col,row):
+  //   (colMin, rowMin) — top corner
+  //   (colMax, rowMin) — right corner
+  //   (colMax, rowMax) — bottom corner
+  //   (colMin, rowMax) — left corner
+  return {
+    top:    isoProject(bbox.colMin, bbox.rowMin),
+    right:  isoProject(bbox.colMax, bbox.rowMin),
+    bottom: isoProject(bbox.colMax, bbox.rowMax),
+    left:   isoProject(bbox.colMin, bbox.rowMax),
+  };
+}
 
 // Status-aware speech bubble copy (พูดเองได้ ฟีลมีชีวิต)
 const SPEECH_LINES: Partial<Record<AgentStatus, string[]>> = {
@@ -103,6 +163,20 @@ const EDGES: Array<[AgentId, AgentId]> = [
   ['anmaioyi', 'yefan'],
 ];
 
+// C1 — idle breathing bob per-agent stagger.  delay 0..2s spread so 7
+// agents never sync (spec: each agent out of phase, ดูเป็นธรรมชาติ).
+// Reuses the org-chart hierarchy ordering so the stagger reads as
+// "cascade" (top→down) rather than random.
+const IDLE_BOB_STAGGER: Record<AgentId, number> = {
+  ziyue:    0.0,
+  anmaioyi: 0.6,
+  wenshu:   1.2,
+  yanxin:   1.8,
+  jianfeng: 0.3,
+  shihao:   0.9,
+  yefan:    1.5,
+};
+
 // Agent wrapper dimensions — single source of truth so the desk SVG and
 // the avatar sit at the same iso anchor. The wrapper contains the full
 // cuboid bbox: 2*halfW wide (footprint) and depth+2*halfH tall (box
@@ -131,6 +205,12 @@ const DESK_TOP_Y_PCT = ((ISO_DESK_DEPTH + ISO_DESK_HALF_H + ISO_DESK_PAD) / AGEN
 export function OfficeMap() {
   const agents = useStore((s) => s.agents);
   const openDetailPanel = useStore((s) => s.openDetailPanel);
+  // C1 — a11y: respect prefers-reduced-motion.  motion/react hook
+  // mirrors window.matchMedia('(prefers-reduced-motion: reduce)') and
+  // re-renders on change.  When true, the idle bob is skipped entirely
+  // (return transform-free, no animation) so the office stays static
+  // for users who need it.
+  const prefersReducedMotion = useReducedMotion();
 
   // Position state for each agent (can be different from home desk when walking)
   const [positions, setPositions] = useState<Record<AgentId, Coords>>(() => ({ ...HOME_COORDS }));
@@ -150,15 +230,29 @@ export function OfficeMap() {
   const [spriteOk, setSpriteOk] = useState<Record<AgentId, boolean>>(() => ({
     ziyue: true, anmaioyi: true, wenshu: true, yanxin: true, jianfeng: true, shihao: true, yefan: true,
   }));
+  // C1 — per-agent hover state.  Hover should suppress the idle bob
+  // (B1.5 hover raise takes over the y channel).  Tracked locally
+  // (not in zustand) because it's UI-local and never needs to outlive
+  // the office view.
+  const [hovered, setHovered] = useState<Record<AgentId, boolean>>(() => ({
+    ziyue: false, anmaioyi: false, wenshu: false, yanxin: false, jianfeng: false, shihao: false, yefan: false,
+  }));
 
   const prevStatuses = useRef<Record<AgentId, AgentStatus>>({
     ziyue: 'idle', anmaioyi: 'idle', wenshu: 'idle', yanxin: 'idle', jianfeng: 'idle', shihao: 'idle', yefan: 'idle'
   });
 
+  // [2] Track per-agent walk target so handleArrival knows which desk
+  // the agent walked to (and can distinguish anmaioyi delivery from
+  // other-agent targeting for offset logic).
+  const walkTargetRef = useRef<Record<AgentId, AgentId>>({} as Record<AgentId, AgentId>);
+
   const getAgent = (id: AgentId): AgentSnapshot | undefined => agents.find((a) => a.id === id);
 
   // Trigger walk animation
   const triggerWalk = (agentId: AgentId, targetId: AgentId) => {
+    // [3] Store target so handleArrival knows where the agent walked to
+    walkTargetRef.current[agentId] = targetId;
     // 1. Start waddling
     setWaddling((prev) => ({ ...prev, [agentId]: true }));
     // 2. Set target coordinates to target desk with offset if targeting Anmaioyi
@@ -172,6 +266,25 @@ export function OfficeMap() {
       }
     }));
   };
+
+  // C3 — listen for handoff events from SSE.  `from_agent` walks to
+  // `to_agent`'s desk (with delivery offset when targeting anmaioyi),
+  // delivers, then returns home.  Skips on mount to avoid replaying
+  // stale events from a prior session.
+  const events = useStore((s) => s.events);
+  const didMountHandoff = useRef(false);
+  useEffect(() => {
+    const handoff = events[0];
+    if (!handoff || handoff.kind !== 'handoff') return;
+    const { from_agent, to_agent } = handoff;
+    if (!from_agent) return;
+    // Mount guard: skip the initial render to avoid stale event replay
+    if (!didMountHandoff.current) { didMountHandoff.current = true; return; }
+    // `prefers-reduced-motion`: skip animation, still route logically
+    if (prefersReducedMotion) return;
+    triggerWalk(from_agent, to_agent ?? 'anmaioyi');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
 
   useEffect(() => {
     for (const agent of agents) {
@@ -196,15 +309,17 @@ export function OfficeMap() {
     const currentPos = positions[id];
     if (!currentPos) return;
 
-    const offset = DELIVERY_OFFSETS[id] || { x: 0, y: 0 };
+    // [4] Resolve target from walkTargetRef (not hardcoded anmaioyi)
+    const targetId = walkTargetRef.current[id] ?? 'anmaioyi';
+    const offset = targetId === 'anmaioyi' ? (DELIVERY_OFFSETS[id] || { x: 0, y: 0 }) : { x: 0, y: 0 };
     const targetPos = {
-      x: HOME_COORDS['anmaioyi'].x + offset.x,
-      y: HOME_COORDS['anmaioyi'].y + offset.y
+      x: HOME_COORDS[targetId].x + offset.x,
+      y: HOME_COORDS[targetId].y + offset.y
     };
     const ownPos = HOME_COORDS[id];
     const agent = getAgent(id);
 
-    // Arrived at Anmaioyi's desk — show speech bubble + sparkle burst
+    // Arrived at target desk — show speech bubble + sparkle burst
     if (Math.abs(currentPos.x - targetPos.x) < 1 && Math.abs(currentPos.y - targetPos.y) < 1) {
       const line = pickLine(agent?.status ?? 'done');
       setDeliveries((prev) => ({ ...prev, [id]: line }));
@@ -212,11 +327,15 @@ export function OfficeMap() {
       // Stay 2.4 sec to hand-off + show speech, then return home
       setTimeout(() => {
         setDeliveries((prev) => ({ ...prev, [id]: null }));
+        // [4] Mark agent as returning home so arrival check below succeeds
+        walkTargetRef.current[id] = id;
         setPositions((prev) => ({ ...prev, [id]: ownPos }));
       }, 2400);
     }
     // Returned home — stop waddling
     else if (Math.abs(currentPos.x - ownPos.x) < 1 && Math.abs(currentPos.y - ownPos.y) < 1) {
+      // [4] Clear walk target so next handoff starts fresh
+      delete walkTargetRef.current[id];
       setWaddling((prev) => ({ ...prev, [id]: false }));
     }
   };
@@ -275,6 +394,55 @@ export function OfficeMap() {
         })}
       </svg>
 
+      {/* B1.5 — Room zone overlay. Three large iso diamonds tinted with
+          the room colour.  Drawn BEHIND the floor tiles so the
+          checkerboard tile pattern shows on top while the zone colour
+          tints the underlying area.  Each zone is a single SVG polygon
+          (4 vertices from the bbox corner tiles) — no DOM-tile fan-out
+          so the cost stays constant regardless of grid size.
+          Depth z-order: the top zone (Core) renders first, the bottom
+          zone (Developer) renders last so it sits visually closer
+          (matches the floor's depth-z "lower = closer" rule). */}
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        {ROOM_ZONES.map((zone) => {
+          const d = zoneDiamond(zone.bbox);
+          const pts = `${d.top.x},${d.top.y} ${d.right.x},${d.right.y} ${d.bottom.x},${d.bottom.y} ${d.left.x},${d.left.y}`;
+          // Compute a soft top-edge label position (midpoint of the
+          // zone's top edge, slightly above the diamond's top corner).
+          const labelX = (d.top.x + d.right.x) / 2;
+          const labelY = d.top.y - 0.5;
+          return (
+            <g key={`zone-${zone.name}`}>
+              <polygon
+                points={pts}
+                fill={`rgba(${zone.color}, 0.10)`}
+                stroke={`rgba(${zone.color}, 0.45)`}
+                strokeWidth={0.12}
+                strokeDasharray="0.4 0.3"
+                strokeLinejoin="round"
+              />
+              <text
+                x={labelX}
+                y={labelY}
+                textAnchor="middle"
+                fontSize={1.2}
+                fontWeight={600}
+                letterSpacing="0.4"
+                fill={`rgba(${zone.color}, 0.75)`}
+                style={{ textTransform: 'uppercase' }}
+              >
+                {zone.name}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
       {/* Diamond floor — render BEFORE desks/avatars so agents sit on top. */}
       {/* Each tile is a div rotated 45° + scaleY 0.5 to become a diamond.   */}
       {/* Width/height in % = 2*AUTO_FIT.Sx / 2*AUTO_FIT.Sy to cover the iso tile area.
@@ -324,8 +492,39 @@ export function OfficeMap() {
         const sparkleAt = sparkles[agent.id];
         const isThinking = agent.status === 'thinking';
         const isWorking = agent.status === 'working';
+        // C1 — idle bob trigger.  Only when the agent is at rest (not
+        // waddling/walking, not hover, not working, not thinking) and
+        // the user hasn't opted out of motion.  Hover state lives on
+        // the inner motion.div (whileHover y:-2.5) and is intentionally
+        // NOT checked here — the wrapper-level hover raise and the
+        // idle bob use different motion nodes so they compose cleanly.
+        const isHovered = hovered[agent.id] ?? false;
+        const isIdle = agent.status === 'idle' && !isWaddling && !isWorking && !isThinking && !isHovered;
+        const shouldBob = isIdle && !prefersReducedMotion;
+        // C2 — typing lean trigger.  Only when the agent is at the desk
+        // actively working, not waddling, not hovered, and the user
+        // hasn't opted out of motion.  Mirrors the C1 shouldBob gate so
+        // the two poses share the same a11y behavior.  Hover suppresses
+        // lean so the hover raise (B1.5 y:-2.5) reads cleanly without
+        // competing with the rotate/scaleY pose.
+        const shouldLean = isWorking && !isWaddling && !isHovered && !prefersReducedMotion;
+        const bobDelay = IDLE_BOB_STAGGER[agent.id] ?? 0;
         const isCore = CORE_AGENTS.has(agent.id);
-        const { row: homeRow } = ISO_GRID[agent.id];
+        const { row: homeRow, col: homeCol } = ISO_GRID[agent.id];
+        // B2 — depth-aware sprite scaling.  Front-row agents (high col+row)
+        // render larger than back-row (low col+row) so the iso depth gradient
+        // is reinforced visually.  Two ranges (core vs non-core) preserve
+        // the visual hierarchy set up in B1.5: core agents stay slightly
+        // larger than non-core across all depths.
+        //   back row  (ziyue  col+row=2) → depthScore 0.25 → smallest
+        //   front row (yefan   col+row=8) → depthScore 1.0  → largest
+        // Caps the existing 12px (core) / 10px (non-core) booleans at the
+        // back, and grows to 14px / 12px at the front — keeps the
+        // wenshu/anmaioyi rows readable while the front row gets the
+        // visual weight the iso perspective implies.
+        const depthScore = (homeCol + homeRow) / 8; // 0 (back) → 1 (front) on 5x5
+        const spriteBase = isCore ? 12 : 10; // px — back-row anchor
+        const spriteSize = spriteBase + depthScore * 2; // back=base, front=base+2
         const active = agent.status !== 'idle';
 
         return (
@@ -363,14 +562,23 @@ export function OfficeMap() {
                 centered on the cuboid's bottom diamond center (which sits
                 on the floor tile center) and spans the full cuboid
                 bbox. 1 viewBox unit = 1% of the office container, so the
-                geometry matches the wrapper %-units. */}
+                geometry matches the wrapper %-units.
+                C2 — pass explicit `mode` so the monitor colour + glow
+                class match the avatar state. We map the agent status to
+                monitorMode directly: idle→idle, thinking→thinking,
+                working→working, anything else (done/failed/blocked) →
+                idle (monitor is off when not actively working). */}
             <IsoDesk
               agentId={agent.id}
               color={agent.color}
               halfW={ISO_DESK_HALF_W}
               halfH={ISO_DESK_HALF_H}
               depth={ISO_DESK_DEPTH}
-              active={active}
+              mode={
+                agent.status === 'working' || agent.status === 'thinking'
+                  ? agent.status
+                  : 'idle'
+              }
             />
 
             {/* Avatar billboard — flat, ตั้งตรง, no rotate. Anchored so
@@ -394,14 +602,96 @@ export function OfficeMap() {
             >
               <motion.div
                 animate={{
-                  rotate: isWaddling ? [-4, 4] : 0,
-                  y: isWaddling ? [0, -3] : 0,
+                  // C1 — idle breathing bob.  Y oscillates ±1.5px around 0
+                  // (subtle, ฟีลหายใจ).  Compose with waddle by ADDING
+                  // values instead of replacing — waddle is [-4,4] rotate
+                  // and [0,-3] y, idle bob is [−1.5,1.5] y.  When both
+                  // are active the waddle wins on y (we only flip to
+                  // waddle values here when isWaddling).  When neither,
+                  // y stays at 0 (no animation).  `rotate` is waddle-only;
+                  // idle bob never rotates.
+                  // C2 — typing lean when working (not waddling, not
+                  // hovered).  Subtle periodic rotate sway (-2°→+2°)
+                  // with a small y/scaleY pulse to feel like leaning
+                  // into the keyboard.  Sits between waddle and bob:
+                  //   isWaddling   → waddle values
+                  //   shouldLean   → lean values (rotate + y + scaleY)
+                  //   shouldBob    → idle bob
+                  //   else         → static (duration: 0)
+                  // `rotate` is now 3-way: waddle | lean | 0.
+                  rotate: isWaddling
+                    ? [-4, 4]
+                    : shouldLean
+                    ? [-2, 2]
+                    : 0,
+                  y: isWaddling
+                    ? [0, -3]
+                    : shouldLean
+                    ? [-1, 0.5]
+                    : shouldBob
+                    ? [-1.5, 1.5]
+                    : 0,
+                  // C2 — scaleY squash to read as "leaning into the desk"
+                  // while typing.  Only set in the lean branch; waddle
+                  // and bob use the default 1 (motion will not animate a
+                  // missing key, but we pass 1 explicitly to be safe so
+                  // the previous scaleY value doesn't linger from a
+                  // lean→idle transition).
+                  scaleY: shouldLean ? [0.97, 1] : 1,
                 }}
-                transition={isWaddling ? waddleTransition : { duration: 0 }}
+                transition={
+                  isWaddling
+                    ? waddleTransition
+                    : shouldLean
+                    ? {
+                        rotate: {
+                          repeat: Infinity,
+                          repeatType: 'mirror',
+                          duration: 1.4,
+                          ease: 'easeInOut',
+                        },
+                        y: {
+                          repeat: Infinity,
+                          repeatType: 'mirror',
+                          duration: 1.4,
+                          ease: 'easeInOut',
+                        },
+                        scaleY: {
+                          repeat: Infinity,
+                          repeatType: 'mirror',
+                          duration: 1.4,
+                          ease: 'easeInOut',
+                        },
+                      }
+                    : shouldBob
+                    ? {
+                        y: {
+                          repeat: Infinity,
+                          repeatType: 'mirror',
+                          duration: 2.8,
+                          ease: 'easeInOut',
+                          delay: bobDelay,
+                        },
+                      }
+                    : { duration: 0 }
+                }
                 className="flex flex-col items-center cursor-pointer group"
                 style={{ transformOrigin: '50% 100%' }}
                 onClick={() => openDetailPanel(agent.id)}
+                onHoverStart={() => setHovered((prev) => ({ ...prev, [agent.id]: true }))}
+                onHoverEnd={() => setHovered((prev) => ({ ...prev, [agent.id]: false }))}
+                /* B1.5 — hover state lives on the wrapper so the inner
+                    avatar/label can react via group-hover (CSS) while
+                    the motion waddle still drives rotate/y. The raise
+                    itself rides on a separate inner motion.div that
+                    applies y ONLY when hovered, so it composes with
+                    (never fights) the outer waddle y. */
               >
+                <motion.div
+                  className="flex flex-col items-center"
+                  whileHover={{ y: -2.5 }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 18 }}
+                >
               {/* 💭 Thought bubble while thinking (idle conversation) */}
               <AnimatePresence>
                 {isThinking && !speech && (
@@ -495,23 +785,48 @@ export function OfficeMap() {
               {/* Avatar & ring — core agents (ziyue/anmaioyi) render larger for hierarchy.
                   B1.3 — try sprite PNG first; on 404 the <img> onError flips
                   spriteOk[id] to false and we fall through to the RiveAvatar
-                  emoji renderer. */}
+                  emoji renderer.
+                  B1.5 — replaced group-hover:scale-105 with a status-coloured
+                  ring + 1.04 scale, since the parent motion.div already
+                  raises on hover (whileHover y:-2.5).  The ring colour
+                  matches agent.color so the hover affordance reads as
+                  "this agent is selectable" without competing with the
+                  status border (which already encodes working/done/etc.). */}
               <div
-                className={`rounded-xl bg-slate-900/90 border transition-all duration-300 group-hover:scale-105 ${
+                className={`rounded-xl bg-slate-900/90 border transition-all duration-300 group-hover:scale-[1.04] group-hover:ring-2 group-hover:ring-offset-1 group-hover:ring-offset-slate-950 ${
                   isCore ? 'p-1 ring-1 ring-white/10' : 'p-0.5'
                 } ${STATUS_BORDER[agent.status]}`}
-                style={{ boxShadow: isWaddling ? '0 6px 10px -3px rgba(0,0,0,0.5)' : undefined }}
+                style={{
+                  boxShadow: isWaddling ? '0 6px 10px -3px rgba(0,0,0,0.5)' : undefined,
+                  // B1.5 — hover ring tinted with agent color.  Tailwind
+                  // can't compose dynamic color in ring-* class, so set
+                  // --tw-ring-color inline. group-hover:ring-2 above
+                  // activates the ring; this color overrides the default.
+                  ['--tw-ring-color' as string]: agent.color,
+                } as React.CSSProperties}
               >
                 {spriteOk[agent.id] ? (
                   <img
                     src={CHARACTER_SPRITE[agent.id]}
                     alt={agent.name}
                     onError={() => setSpriteOk((prev) => (prev[agent.id] ? prev : { ...prev, [agent.id]: false }))}
-                    className={`${isCore ? 'w-12 h-12' : 'w-10 h-10'} object-contain`}
+                    // B2 — depth-aware size.  Inline width/height beats the
+                    // Tailwind className so we can interpolate non-discrete
+                    // sizes (e.g. 11.25px for mid-row) the class system can't.
+                    className="object-contain"
+                    style={{ width: `${spriteSize}px`, height: `${spriteSize}px` }}
                     draggable={false}
                   />
                 ) : (
-                  <RiveAvatar id={agent.id} status={agent.status} color={agent.color} size={isCore ? 'sm' : 'sm'} />
+                  <RiveAvatar
+                    id={agent.id}
+                    status={agent.status}
+                    color={agent.color}
+                    // B2 — pass numeric size so the emoji fallback tracks
+                    // the same iso depth gradient as the sprite path.
+                    width={spriteSize}
+                    height={spriteSize}
+                  />
                 )}
               </div>
 
@@ -543,6 +858,7 @@ export function OfficeMap() {
                   {agent.role}
                 </span>
               </div>
+                </motion.div>
               </motion.div>
             </div>
           </motion.div>

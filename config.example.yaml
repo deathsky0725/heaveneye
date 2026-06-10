@@ -1,0 +1,27 @@
+# Hermes Profile Configuration Example
+# Save this file to ~/.hermes/profiles/<profile_name>/config.yaml
+
+model:
+  default: MiniMax-M2.7
+  provider: minimax
+  base_url: https://api.minimax.io/anthropic
+
+providers:
+  minimax:
+    api_key: "your-minimax-api-key"
+  openai:
+    api_key: "your-openai-api-key"
+  anthropic:
+    api_key: "your-anthropic-api-key"
+
+display:
+  compact: false
+  personality: helpful
+  streaming: true
+  timestamps: false
+  inline_diffs: true
+  show_cost: false
+
+security:
+  redact_secrets: true
+  allow_lazy_installs: true

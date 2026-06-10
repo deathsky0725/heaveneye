@@ -19,9 +19,9 @@ import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { HOME, AGENTS, type AgentId } from '../config.ts';
 import { state } from '../state/engine.ts';
-import { appendResultMdEntry, type ResultMdEntry } from './resultMdUpdater.ts';
-import { notifyCompleted } from '../lib/discordNotifier.ts';
+import { appendResultMdEntry } from './resultMdUpdater.ts';
 import { relayStore } from '../state/relayStore.ts';
+import { recordAgentEvent } from './alertThresholds.ts';
 
 const BOARDS_ROOT = join(HOME, '.hermes/kanban/boards');
 const POLL_INTERVAL_MS = 1_000;
@@ -69,17 +69,20 @@ function handleEvent(row: KanbanEventRow, boardSlug: string, db: Database): void
 
   switch (row.kind) {
     case 'claimed':
+      recordAgentEvent(agent);
       state.onKanbanActive(agent, boardSlug, row.task_id, taskTitle);
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'claimed', task_id: row.task_id, task_title: taskTitle, payload });
       dispatchNotification(db, row.task_id, taskTitle, 'claimed', agent);
       return;
 
     case 'spawned':
+      recordAgentEvent(agent);
       state.onHermesToolUse(agent, 'spawn');
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'spawned', task_id: row.task_id, task_title: taskTitle, payload });
       return;
 
     case 'heartbeat': {
+      recordAgentEvent(agent);
       const note = typeof payload.note === 'string' ? payload.note.slice(0, 60) : 'heartbeat';
       state.onHermesToolUse(agent, note);
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'heartbeat', task_id: row.task_id, task_title: taskTitle, payload });
@@ -87,18 +90,40 @@ function handleEvent(row: KanbanEventRow, boardSlug: string, db: Database): void
     }
 
     case 'completed':
+      recordAgentEvent(agent);
       state.onKanbanIdle(agent);
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'completed', task_id: row.task_id, task_title: taskTitle, payload });
       dispatchNotification(db, row.task_id, taskTitle, 'completed', agent);
       relayStore.onRelayFired(agent, row.task_id);
       appendResultMdEntry({ timestamp: new Date().toISOString(), agent, event: 'completed', taskId: row.task_id, taskTitle, boardSlug });
-      const agentName = AGENTS[agent]?.name ?? agent;
-      notifyCompleted({ taskId: row.task_id, taskTitle, agentName });
+
+      // Phase C — dependency-aware handoff.
+      // Resolve the next assignee from task_links(child of this task) so the
+      // office can route the delivery walk to the right desk. Emit a
+      // sibling `handoff` event the frontend can listen for.
+      try {
+        const toAgent = state.resolveHandoff(boardSlug, row.task_id);
+        // toAgent may be null → frontend falls back to anmaioyi.
+        state.onKanbanEvent({
+          ts: new Date().toISOString(),
+          agent,
+          kind: 'handoff',
+          task_id: row.task_id,
+          task_title: taskTitle,
+          from_agent: agent,
+          to_agent: toAgent,
+          parent_task_id: row.task_id,
+          payload: { source: 'completed' },
+        });
+      } catch (e) {
+        console.warn(`[kanban] handoff resolve failed for ${row.task_id}:`, e);
+      }
       return;
 
     case 'crashed':
     case 'gave_up':
     case 'timed_out':
+      recordAgentEvent(agent);
       state.onKanbanIdle(agent);
       state.onHermesEvent({ agent, task_id: row.task_id, event: 'failed', payload });
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'blocked', task_id: row.task_id, task_title: taskTitle, payload: { reason: row.kind } });
