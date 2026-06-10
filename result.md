@@ -80,11 +80,8 @@ theme.ts design tokens · motion layout transitions · RiveAvatar activity event
 
 ---
 
-## 🚧 Backlog (post-pivot)
-- เพิ่ม **kanban event filter / search** ใน TaskFeedSidebar (ตอนนี้แค่ all/blocks)
-- resultMdUpdater daemon → `result.events.log` แทน append result.md เพื่อให้ ji-ziyue curate ได้สะดวก
-- StatChart: ขยายดู 7-day / 30-day token trend
-- Discord webhook: เพิ่มการตั้งค่า channel ใน UI
+## ✅ Backlog (post-pivot) — ALL DONE in Phase 6
+~~kanban event filter~~ (3.1 ✓) · ~~resultMdUpdater → result.events.log~~ (3.2 ✓) · ~~StatChart 7d/30d~~ (3.3 ✓) · ~~Discord channel config UI~~ (3.4 ✓). รายละเอียดด้านล่าง.
 
 ## 🚧 Phase 6 — Backlog 3.1 → 3.4 (sequential, ji-ziyue audit each)
 
