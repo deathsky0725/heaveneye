@@ -58,6 +58,31 @@ function isKnownAgent(name: string | null | undefined): name is AgentId {
   return !!name && name in AGENTS;
 }
 
+/** Phase D — detect QA tasks (yanxin doing QA review) */
+function isQaTask(agent: AgentId, taskTitle: string): boolean {
+  return agent === 'yanxin' && /qa/i.test(taskTitle);
+}
+
+/**
+ * Phase D — resolve QA verdict from task_comments.
+ * yanxin comments the verdict (PASS/FAIL) on the QA task when done.
+ * Returns 'pass' | 'fail' | null (no verdict found yet).
+ */
+function resolveQaVerdict(db: Database, taskId: string): 'pass' | 'fail' | null {
+  // Match yanxin's documented verdict line: "QA VERDICT: PASS|FAIL"
+  // (may be prefixed with a markdown heading like "## ", so match anywhere)
+  const rows = db.query(`
+    SELECT body FROM task_comments
+    WHERE task_id = ? AND author = 'yanxin'
+    ORDER BY id DESC LIMIT 3
+  `).all(taskId) as { body: string }[];
+  for (const row of rows) {
+    const m = (row.body ?? '').toUpperCase().match(/QA VERDICT:\s*(PASS|FAIL)/);
+    if (m) return m[1] === 'PASS' ? 'pass' : 'fail';
+  }
+  return null;
+}
+
 function handleEvent(row: KanbanEventRow, boardSlug: string, db: Database): void {
   if (!isKnownAgent(row.assignee)) return;
   const agent = row.assignee;
@@ -73,6 +98,10 @@ function handleEvent(row: KanbanEventRow, boardSlug: string, db: Database): void
       state.onKanbanActive(agent, boardSlug, row.task_id, taskTitle);
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'claimed', task_id: row.task_id, task_title: taskTitle, payload });
       dispatchNotification(db, row.task_id, taskTitle, 'claimed', agent);
+      // Phase D — emit qa_start so the frontend can show yanxin's "testing" indicator
+      if (isQaTask(agent, taskTitle)) {
+        state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'qa_start', task_id: row.task_id, task_title: taskTitle, payload });
+      }
       return;
 
     case 'spawned':
@@ -117,6 +146,23 @@ function handleEvent(row: KanbanEventRow, boardSlug: string, db: Database): void
         });
       } catch (e) {
         console.warn(`[kanban] handoff resolve failed for ${row.task_id}:`, e);
+      }
+
+      // Phase D — emit qa_verdict when yanxin completes a QA task.
+      // The verdict is read from yanxin's latest task_comment (PASS/FAIL).
+      if (isQaTask(agent, taskTitle)) {
+        const verdict = resolveQaVerdict(db, row.task_id);
+        if (verdict) {
+          state.onKanbanEvent({
+            ts: new Date().toISOString(),
+            agent,
+            kind: 'qa_verdict',
+            task_id: row.task_id,
+            task_title: taskTitle,
+            verdict,
+            payload: { source: 'completed' },
+          });
+        }
       }
       return;
 

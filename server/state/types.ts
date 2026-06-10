@@ -37,7 +37,7 @@ export interface KanbanEventEntry {
   id: number;       // monotonic counter — NOT the kanban event id
   ts: string;      // ISO8601
   agent: AgentId;
-  kind: 'claimed' | 'spawned' | 'completed' | 'blocked' | 'heartbeat' | 'decomposed' | 'unblocked' | 'handoff';
+  kind: 'claimed' | 'spawned' | 'completed' | 'blocked' | 'heartbeat' | 'decomposed' | 'unblocked' | 'handoff' | 'qa_start' | 'qa_verdict';
   task_id: string;
   task_title?: string;
   payload?: Record<string, any>;
@@ -49,6 +49,8 @@ export interface KanbanEventEntry {
   to_agent?: AgentId | null;
   // C3 — parent task whose completion triggered this handoff (informational)
   parent_task_id?: string;
+  // Phase D — QA verdict: 'pass' | 'fail' (set on qa_verdict events)
+  verdict?: 'pass' | 'fail';
 }
 
 export interface InboxEntry {
