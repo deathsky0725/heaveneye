@@ -242,10 +242,17 @@ export function OfficeMap() {
     ziyue: 'idle', anmaioyi: 'idle', wenshu: 'idle', yanxin: 'idle', jianfeng: 'idle', shihao: 'idle', yefan: 'idle'
   });
 
+  // [2] Track per-agent walk target so handleArrival knows which desk
+  // the agent walked to (and can distinguish anmaioyi delivery from
+  // other-agent targeting for offset logic).
+  const walkTargetRef = useRef<Record<AgentId, AgentId>>({} as Record<AgentId, AgentId>);
+
   const getAgent = (id: AgentId): AgentSnapshot | undefined => agents.find((a) => a.id === id);
 
   // Trigger walk animation
   const triggerWalk = (agentId: AgentId, targetId: AgentId) => {
+    // [3] Store target so handleArrival knows where the agent walked to
+    walkTargetRef.current[agentId] = targetId;
     // 1. Start waddling
     setWaddling((prev) => ({ ...prev, [agentId]: true }));
     // 2. Set target coordinates to target desk with offset if targeting Anmaioyi
@@ -260,21 +267,22 @@ export function OfficeMap() {
     }));
   };
 
-  // C3 — listen for handoff events from SSE to route delivery walks to
-  // anmaioyi (the delivery coordinator). The `to_agent` field in the handoff
-  // event means "who owns the next task in the chain" — NOT the delivery
-  // destination. All specialist → specialist handoffs route through anmaioyi.
+  // C3 — listen for handoff events from SSE.  `from_agent` walks to
+  // `to_agent`'s desk (with delivery offset when targeting anmaioyi),
+  // delivers, then returns home.  Skips on mount to avoid replaying
+  // stale events from a prior session.
   const events = useStore((s) => s.events);
+  const didMountHandoff = useRef(false);
   useEffect(() => {
     const handoff = events[0];
     if (!handoff || handoff.kind !== 'handoff') return;
-    const { from_agent } = handoff;
+    const { from_agent, to_agent } = handoff;
     if (!from_agent) return;
+    // Mount guard: skip the initial render to avoid stale event replay
+    if (!didMountHandoff.current) { didMountHandoff.current = true; return; }
     // `prefers-reduced-motion`: skip animation, still route logically
     if (prefersReducedMotion) return;
-    // Route to anmaioyi (delivery coordinator) — NEVER walk to another specialist
-    triggerWalk(from_agent, 'anmaioyi');
-    // Deduplicate: only react to the newest event (events[0] is newest)
+    triggerWalk(from_agent, to_agent ?? 'anmaioyi');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events]);
 
@@ -301,15 +309,17 @@ export function OfficeMap() {
     const currentPos = positions[id];
     if (!currentPos) return;
 
-    const offset = DELIVERY_OFFSETS[id] || { x: 0, y: 0 };
+    // [4] Resolve target from walkTargetRef (not hardcoded anmaioyi)
+    const targetId = walkTargetRef.current[id] ?? 'anmaioyi';
+    const offset = targetId === 'anmaioyi' ? (DELIVERY_OFFSETS[id] || { x: 0, y: 0 }) : { x: 0, y: 0 };
     const targetPos = {
-      x: HOME_COORDS['anmaioyi'].x + offset.x,
-      y: HOME_COORDS['anmaioyi'].y + offset.y
+      x: HOME_COORDS[targetId].x + offset.x,
+      y: HOME_COORDS[targetId].y + offset.y
     };
     const ownPos = HOME_COORDS[id];
     const agent = getAgent(id);
 
-    // Arrived at Anmaioyi's desk — show speech bubble + sparkle burst
+    // Arrived at target desk — show speech bubble + sparkle burst
     if (Math.abs(currentPos.x - targetPos.x) < 1 && Math.abs(currentPos.y - targetPos.y) < 1) {
       const line = pickLine(agent?.status ?? 'done');
       setDeliveries((prev) => ({ ...prev, [id]: line }));
@@ -317,11 +327,15 @@ export function OfficeMap() {
       // Stay 2.4 sec to hand-off + show speech, then return home
       setTimeout(() => {
         setDeliveries((prev) => ({ ...prev, [id]: null }));
+        // [4] Mark agent as returning home so arrival check below succeeds
+        walkTargetRef.current[id] = id;
         setPositions((prev) => ({ ...prev, [id]: ownPos }));
       }, 2400);
     }
     // Returned home — stop waddling
     else if (Math.abs(currentPos.x - ownPos.x) < 1 && Math.abs(currentPos.y - ownPos.y) < 1) {
+      // [4] Clear walk target so next handoff starts fresh
+      delete walkTargetRef.current[id];
       setWaddling((prev) => ({ ...prev, [id]: false }));
     }
   };
