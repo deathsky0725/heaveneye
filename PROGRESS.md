@@ -110,9 +110,11 @@ build 384.63 kB · tsc clean · no new npm deps.
 | C1 — idle breathing bob + stagger + reduced-motion | t_76082056 | ✅ done | commit 4537cbc |
 | C2 — working pose + desk glow pulse (3-state desk) | t_953ab609 | ✅ done | commit d409491 |
 | C3 STEP 0+1+2 — dependency-aware handoff (investigate→backend resolveHandoff+SSE→frontend triggerWalk) | t_197798e4 | ✅ done | yefan; anmaioyi audit PASS; committed |
-| C4 — perf + bundle QA + aesthetic check | t_6d9adfe6 | 🔄 ready | shihao |
+| C3.fix — handoff overlap (shihao parked on yanxin) + return-home for any target | t_11ae3766 | ✅ done | shihao; commit 0917064 (supersede ผิด 299cfd9) |
+| C4 — perf + bundle QA + aesthetic (ji-ziyue FINAL AUDIT) | t_6d9adfe6 | ✅ done | ji-ziyue visual audit PASS: 7 agents แยกชัด, bundle 386.16kB, no jank |
 
-> หมายเหตุ: C3 ทั้ง STEP 0/1/2 landed รวมใน t_197798e4 — task ลูก t_471faa34 (STEP1) / t_b01dea69 (STEP2) ซ้ำซ้อน รอ anmaioyi reconcile. **Visual verify ของ handoff walk + C4 perf = ยังค้าง** → จะผ่าน QA gate (yanxin) ตาม workflow ใหม่
+> **Phase C COMPLETE 🎉** — C0→C4 + B2 + C3.fix ครบ. ji-ziyue visual final audit (preview) ยืนยัน: shihao col3 ไม่ทับ yanxin, handoff เดินไป to_agent จริง+กลับบ้าน, layout 'ดูดีพอ'.
+> Vision gap: worker QA (yanxin) ตอนนี้ตั้ง `auxiliary.vision: gemini-2.5-flash` แล้ว — รอบหน้ามองจอเองได้ (validate ด้วย yanxin re-QA run ถัดไป)
 
 **กฎ Phase C:** ห้าม npm dep ใหม่ · bundle ≤ 392kB · ห้ามรื้อ B1 · prefers-reduced-motion ทุก animation · C4 = ji-ziyue FINAL AUDIT
 
