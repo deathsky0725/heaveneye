@@ -123,3 +123,15 @@ build 384.63 kB · tsc clean · no new npm deps.
 **Team change (2026-06-09):** yanxin (เหยียนซิน) Copywriter → **QA Engineer (E2E)** — gate ก่อน audit, no-dep checklist `docs/qa-e2e-checklist.md`
 
 **Committed 2026-06-09 (ji-ziyue, แยก 3 กลุ่ม):** bug1 gateway-liveness (gateway.ts + system-health.ts + UsagePanel M3 label) · Phase C C3 handoff (engine/kanban/index/types ×2/OfficeMap/TaskFeedSidebar) · yanxin QA role (config.ts label + checklist)
+
+## 🚧 Phase D — Office Liveness 2.0 (2026-06-10 → in progress) · branch feat/phase-d-liveness2
+spec: `plan.phase-d-liveness2.md` · D1 QA gate visual · D2 thinking pose · D3 idle→away · D4 milestone
+
+| Task | Status | Notes |
+|------|--------|-------|
+| **D1 — QA gate visual** | ✅ done | STEP1 backend qa_start/qa_verdict (4e82b3b) + STEP2 frontend badge/pulse (4b1b1cd). 🔍 TESTING badge (state-derived) + ✓/✗ verdict pulse บน desk yanxin |
+| D2 — thinking pose | ⬜ next | |
+| D3 — idle→away | ⬜ | |
+| D4 — milestone celebration | ⬜ (ปิด Phase) | |
+
+**🎯 QA workflow VALIDATED (D1):** yanxin's vision QA (MiniMax-M3) จับ visual bug ได้เอง 2 รอบ + root-cause ตรง (badge missing on reload → outer gate line 667). พิสูจน์ dev→QA(vision)→ji-ziyue audit ทำงานจริง — จับสิ่งที่ code-review มองข้าม. bundle 388.31 kB ≤ 395.
