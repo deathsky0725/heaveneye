@@ -583,7 +583,11 @@ export function OfficeMap() {
         // the two poses share the same a11y behavior.  Hover suppresses
         // lean so the hover raise (B1.5 y:-2.5) reads cleanly without
         // competing with the rotate/scaleY pose.
-        const shouldLean = isWorking && !isWaddling && !isHovered && !prefersReducedMotion;
+        const shouldLean  = isWorking && !isWaddling && !isHovered && !prefersReducedMotion;
+        // D2 — head tilt when thinking (not waddling, not hovered, motion allowed).
+        // Period 3s is slower than working lean 1.4s to signal contemplation vs typing rhythm.
+        // Composes with shouldBob: tilt takes priority (thinking > idle bob).
+        const shouldTilt  = isThinking && !isWaddling && !isHovered && !prefersReducedMotion;
         const bobDelay = IDLE_BOB_STAGGER[agent.id] ?? 0;
         const isCore = CORE_AGENTS.has(agent.id);
         const { row: homeRow, col: homeCol } = ISO_GRID[agent.id];
@@ -768,6 +772,8 @@ export function OfficeMap() {
                     ? [-4, 4]
                     : shouldLean
                     ? [-2, 2]
+                    : shouldTilt
+                    ? [-2, 2]
                     : 0,
                   y: isWaddling
                     ? [0, -3]
@@ -818,6 +824,15 @@ export function OfficeMap() {
                           delay: bobDelay,
                         },
                       }
+                    : shouldTilt
+                    ? {
+                        rotate: {
+                          repeat: Infinity,
+                          repeatType: 'mirror',
+                          duration: 3,
+                          ease: 'easeInOut',
+                        },
+                      }
                     : { duration: 0 }
                 }
                 className="flex flex-col items-center cursor-pointer group"
@@ -837,7 +852,9 @@ export function OfficeMap() {
                   whileHover={{ y: -2.5 }}
                   transition={{ type: 'spring', stiffness: 320, damping: 18 }}
                 >
-              {/* 💭 Thought bubble while thinking (idle conversation) */}
+              {/* 💭 D2 — thought dots "•••" loop above the avatar while thinking.
+                  Static dots (no animation) when prefers-reduced-motion is set,
+                  so the "thinking" state is still legible without motion. */}
               <AnimatePresence>
                 {isThinking && !speech && (
                   <motion.div
@@ -846,9 +863,15 @@ export function OfficeMap() {
                     animate={{ scale: 1, opacity: 1, y: 0 }}
                     exit={{ scale: 0, opacity: 0 }}
                     transition={{ duration: 0.25 }}
-                    className="absolute -top-7 text-lg pointer-events-none select-none"
+                    className="absolute -top-7 pointer-events-none select-none"
                   >
-                    💭
+                    <span
+                      className={prefersReducedMotion ? 'text-base' : 'text-base anim-thought-dots'}
+                      style={{ fontFamily: 'monospace', letterSpacing: '-0.05em' }}
+                      aria-label="thinking"
+                    >
+                      •••
+                    </span>
                   </motion.div>
                 )}
               </AnimatePresence>
