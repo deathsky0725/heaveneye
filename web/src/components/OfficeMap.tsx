@@ -238,6 +238,21 @@ export function OfficeMap() {
     ziyue: false, anmaioyi: false, wenshu: false, yanxin: false, jianfeng: false, shihao: false, yefan: false,
   }));
 
+  // D1 — QA gate signals per task_id.  Each entry holds the qa_start
+  // event (for the "testing" badge) and/or the verdict (for the pulse).
+  // null = no active QA signal for that task_id.
+  type QaSignal = {
+    task_id: string;
+    task_title?: string;
+    verdict: 'pass' | 'fail' | null;
+    // Absolute ms timestamp when the verdict pulse should expire.
+    // Cleared automatically by the render logic.
+    verdictExpiresAt: number | null;
+  };
+  const [qaSignals, setQaSignals] = useState<Record<string, QaSignal | null>>(() => ({
+    yanxin: null,
+  }));
+
   const prevStatuses = useRef<Record<AgentId, AgentStatus>>({
     ziyue: 'idle', anmaioyi: 'idle', wenshu: 'idle', yanxin: 'idle', jianfeng: 'idle', shihao: 'idle', yefan: 'idle'
   });
@@ -248,6 +263,12 @@ export function OfficeMap() {
   const walkTargetRef = useRef<Record<AgentId, AgentId>>({} as Record<AgentId, AgentId>);
 
   const getAgent = (id: AgentId): AgentSnapshot | undefined => agents.find((a) => a.id === id);
+
+  // D1 STEP 2.fix — derive testing badge from CURRENT agent state (not just
+  // qa_start events).  Shows on load when yanxin is already mid-QA.
+  const isYanxinQa =
+    getAgent('yanxin')?.status === 'working' &&
+    /^qa\b/i.test(getAgent('yanxin')?.currentTask?.title ?? '');
 
   // Trigger walk animation
   const triggerWalk = (agentId: AgentId, targetId: AgentId) => {
@@ -283,6 +304,61 @@ export function OfficeMap() {
     // `prefers-reduced-motion`: skip animation, still route logically
     if (prefersReducedMotion) return;
     triggerWalk(from_agent, to_agent ?? 'anmaioyi');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
+
+  // D1 STEP 2 — QA gate visual.  Listen for qa_start / qa_verdict events
+  // on the shared `events` ref already declared above.  Reuses the same
+  // events array; does NOT redeclare `const events` (would cause a block-
+  // scoped variable redeclaration error).
+  //
+  // Logic:
+  //   qa_start  → show "testing" badge on yanxin's desk (scan pulse, distinct
+  //               from the dev working glow).  Stays until a verdict arrives.
+  //   qa_verdict → show verdict pulse at yanxin's desk (✓ green / ✗ red)
+  //                for ~1.5s then auto-clear.  Clears the "testing" badge.
+  //
+  // Mount guard: skip stale buffered events from the prior session (same
+  // pattern as C3 didMountHandoff).
+  const didMountQa = useRef(false);
+  useEffect(() => {
+    const ev = events[0];
+    if (!ev) return;
+    if (ev.kind !== 'qa_start' && ev.kind !== 'qa_verdict') return;
+    if (!didMountQa.current) { didMountQa.current = true; return; }
+
+    if (ev.kind === 'qa_start') {
+      // Skip if yanxin is already in QA state — the state-derived isYanxinQa
+      // handles the badge on load / across reloads.  Still buffer the signal
+      // so a verdict can arrive and clear it.
+      if (!isYanxinQa) {
+        setQaSignals((prev) => ({
+          ...prev,
+          yanxin: { task_id: ev.task_id, task_title: ev.task_title, verdict: null, verdictExpiresAt: null },
+        }));
+      }
+    } else if (ev.kind === 'qa_verdict') {
+      // Show verdict pulse at yanxin's desk; auto-clear after 1.5s.
+      // reduced-motion: still set the signal (badge clears) but skip the
+      // timed expiry animation on the verdict pulse.
+      const expiresAt = prefersReducedMotion ? null : Date.now() + 1500;
+      setQaSignals((prev) => ({
+        ...prev,
+        yanxin: { task_id: ev.task_id, task_title: ev.task_title, verdict: ev.verdict ?? null, verdictExpiresAt: expiresAt },
+      }));
+      if (!prefersReducedMotion) {
+        setTimeout(() => {
+          setQaSignals((prev) => {
+            const cur = prev.yanxin;
+            // Only clear if this signal is still the one we set (no newer event arrived)
+            if (cur && cur.verdictExpiresAt && Date.now() >= cur.verdictExpiresAt) {
+              return { ...prev, yanxin: null };
+            }
+            return prev;
+          });
+        }, 1500);
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events]);
 
@@ -580,6 +656,75 @@ export function OfficeMap() {
                   : 'idle'
               }
             />
+
+            {/* D1 — QA gate visual on yanxin's desk:
+                (1) "testing" badge with scan pulse when qa_start received but no verdict yet.
+                (2) Verdict pulse (✓ green / ✗ red) for ~1.5s then auto-clear.
+
+                All wrapped in AnimatePresence so they exit cleanly when the
+                signal is cleared by the setTimeout in the QA useEffect. */}
+            <AnimatePresence>
+              {agent.id === 'yanxin' && (isYanxinQa || qaSignals.yanxin) && (
+                <>
+                  {/* "testing" badge — state-derived + event-driven.
+ State-derived: isYanxinQa when yanxin is mid-QA on load.
+                      Event-driven: qaSignals from qa_start event.
+                      Both suppressed once a verdict arrives. */}
+                  {(isYanxinQa || qaSignals.yanxin) && !qaSignals.yanxin?.verdict && (
+                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+                      <div className="relative flex flex-col items-center">
+                        <div
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shadow-md ${
+                            prefersReducedMotion
+                              ? 'bg-amber-400/20 text-amber-300 border-amber-400/40'
+                              : 'bg-amber-400/20 text-amber-300 border-amber-400/40'
+                          }`}
+                        >
+                          🔍 TESTING
+                        </div>
+                        {/* Scan pulse — amber ring expanding outward from the badge.
+                            Distinct from the dev working glow (cyan pulse on desk).
+                            Only animates when motion is allowed. */}
+                        {!prefersReducedMotion && (
+                          <motion.div
+                            key="qa-scan"
+                            initial={{ scale: 0.6, opacity: 0.9 }}
+                            animate={{ scale: 3.0, opacity: 0 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 1.2, repeat: Infinity, ease: 'easeOut' }}
+                            className="absolute rounded-full border border-amber-400/50"
+                            style={{ top: '-4px', width: '32px', height: '32px', marginLeft: '-16px' }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Verdict pulse — shows for ~1.5s then the useEffect setTimeout clears it.
+                      PASS → green ✓, FAIL → red ✗.  Replaces the testing badge. */}
+                  {qaSignals.yanxin?.verdict && (
+                    <motion.div
+                      key={`qa-verdict-${qaSignals.yanxin!.task_id}`}
+                      initial={{ scale: 0.4, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.4, opacity: 0 }}
+                      transition={{ duration: 0.25, ease: 'backOut' }}
+                      className="absolute -top-8 left-1/2 -translate-x-1/2 z-40 pointer-events-none"
+                    >
+                      <div
+                        className={`text-lg font-bold w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${
+                          qaSignals.yanxin!.verdict === 'pass'
+                            ? 'bg-emerald-500/90 text-white ring-2 ring-emerald-400/60'
+                            : 'bg-rose-500/90 text-white ring-2 ring-rose-400/60'
+                        }`}
+                      >
+                        {qaSignals.yanxin!.verdict === 'pass' ? '✓' : '✗'}
+                      </div>
+                    </motion.div>
+                  )}
+                </>
+              )}
+            </AnimatePresence>
 
             {/* Avatar billboard — flat, ตั้งตรง, no rotate. Anchored so
                 its bottom sits on the desk top.

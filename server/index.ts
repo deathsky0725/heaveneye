@@ -229,6 +229,20 @@ if (process.env.NODE_ENV !== 'production') {
     });
     return c.json({ ok: true, from, to, taskId });
   });
+
+  // Phase D — dev-only test endpoint to fire qa_start for visual testing
+  app.post('/api/test/qa-start', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { taskId = 't_89a2728a', taskTitle = 'QA — verify D1 STEP 2' } = body as { taskId?: string; taskTitle?: string };
+    state.onKanbanEvent({
+      ts: new Date().toISOString(),
+      agent: 'yanxin',
+      kind: 'qa_start',
+      task_id: taskId,
+      task_title: taskTitle,
+    });
+    return c.json({ ok: true, kind: 'qa_start', agent: 'yanxin', taskId });
+  });
 }
 
 app.get('/api/notifications', (c) => {
