@@ -32,6 +32,9 @@ app.get('/api/health', (c) => c.json(state.getSystemHealth() ?? { checkedAt: new
 
 app.get('/api/agents', (c) => c.json({ agents: state.snapshot() }));
 
+// Phase E2 — per-provider rollup: { provider, agents[], tokensTodayTotal }
+app.get('/api/providers', (c) => c.json({ providers: state.getProviders() }));
+
 app.get('/api/usage/5h', (c) => c.json({ usage: state.getUsage5h() }));
 
 app.get('/api/usage/24h', (c) => {

@@ -310,6 +310,30 @@ class StateEngine {
     });
   }
 
+  /** Phase E2 — per-provider rollup of agent snapshots + today's token totals */
+  getProviders(): Array<{ provider: string; agents: AgentId[]; tokensTodayTotal: number }> {
+    const snapshots = this.snapshot();
+    const map = new Map<string, { agents: AgentId[]; tokensTodayTotal: number }>();
+
+    for (const snap of snapshots) {
+      const prov = snap.provider ?? 'unknown';
+      let entry = map.get(prov);
+      if (!entry) {
+        entry = { agents: [], tokensTodayTotal: 0 };
+        map.set(prov, entry);
+      }
+      entry.agents.push(snap.id);
+      const t = snap.tokensToday;
+      entry.tokensTodayTotal += t.input + t.output + t.cacheRead + t.cacheCreate;
+    }
+
+    return Array.from(map.entries()).map(([provider, { agents, tokensTodayTotal }]) => ({
+      provider,
+      agents,
+      tokensTodayTotal,
+    }));
+  }
+
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
