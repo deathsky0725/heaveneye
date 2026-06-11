@@ -132,7 +132,11 @@ spec: `plan.phase-d-liveness2.md` · D1 QA gate visual · D2 thinking pose · D3
 | **D1 — QA gate visual** | ✅ done | STEP1 backend qa_start/qa_verdict (4e82b3b) + STEP2 frontend badge/pulse (4b1b1cd). 🔍 TESTING badge (state-derived) + ✓/✗ verdict pulse บน desk yanxin |
 | **D2 — thinking pose** | ✅ done | "•••" thought dots + head tilt ±2°/3s (31498c1). 3-state distinct: idle bob / thinking dots+tilt / working lean+glow. **Live-verified** (amber border + dots) via new /api/test/status |
 | **D3 — idle→away** | ✅ done | idle > 5min → dim 0.55 + zzz, 30s tick re-eval (4a2a75b). **Live-verified** (yanxin idle 10min → dim+zzz via /api/test/status idleMinutes). ji-ziyue fixed reduced-motion bug (zzz float) |
-| D4 — milestone celebration | ⬜ next (ปิด Phase) | |
+| **D4 — milestone celebration** | ✅ done | 16-particle CSS confetti (no-dep) on milestone completed event (0af712d). mount+reduced-motion+stale guard. ji-ziyue fixed detection regex (literal slashes). Live-verified via /api/test/milestone |
+
+> **Phase D COMPLETE 🎉** — D1→D4 merged เข้า main (1c80870). office liveness 2.0: QA gate visual + thinking + away + milestone. bundle 390.45 kB ≤ 395. ทุก feature live-verified.
+> **🎯 QA-with-vision validated:** yanxin (MiniMax-M3 vision) จับ visual bug จริงได้เอง. audit จับบั๊ก 4 ตัวที่ worker/code-review มองข้าม: verdict parser format · badge outer-gate · reduced-motion zzz · milestone regex literal-slashes.
+> **Test infra:** dev-only `/api/test/{status,milestone}` (force agent status/idleMinutes/milestone) สำหรับ visual QA ของ state-driven poses.
 
 **Test infra (434f83c):** dev-only `POST /api/test/status {agent,status}` + `engine.debugSetStatus()` — force agent status เพื่อ verify state-driven poses สด (แก้ gap ที่ thinking/working transient เทสไม่ได้). ใช้ verify D3/D4 ต่อ
 
