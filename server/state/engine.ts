@@ -373,10 +373,15 @@ class StateEngine {
    * title) so liveness poses (thinking / working / away) can be triggered
    * on demand for visual QA. Gated behind /api/test/status (dev only).
    */
-  debugSetStatus(id: AgentId, status: AgentStatus, taskTitle?: string, idleMinutes?: number) {
+  debugSetStatus(id: AgentId, status: AgentStatus, taskTitle?: string, idleMinutes?: number, healthFlag?: AgentSnapshot['healthFlag']) {
     if (!AGENTS[id]) return;
     if (taskTitle !== undefined) {
       this.patch(id, { currentTask: { id: 'debug', title: taskTitle } });
+    }
+    if (healthFlag !== undefined) {
+      // force a health flag for visual QA of E8 — on an idle agent it persists
+      // (checkStuckWorkers only processes running/claimed tasks, won't clobber).
+      this.patch(id, { healthFlag });
     }
     this.setStatus(id, status);
     // Backdate lastEventAt so D3 idle→away can be triggered without waiting
