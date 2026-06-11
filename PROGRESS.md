@@ -4,7 +4,7 @@
 > สั่งงาน agent จริง = ใช้ terminal/claude CLI/gemini CLI โดยตรง. Heaveneye = ดูสถานะ + ปุ่ม control แค่ที่จำเป็น
 
 Last updated: 2026-06-11 by ji-ziyue
-Current phase: **Phase D (Office Liveness 2.0) COMPLETE + merged+pushed to main (541c4a0). Phase E (Team Health) = next — see `plan.phase-e-team-health.md`**
+Current phase: **Phase E core (Team Health) COMPLETE + merged main (cbc6da6). E4/E5/E7/E9/E10 deferred. NEXT = workflow redesign (พี่เบญ directive — รอทีมว่าง)**
 
 ---
 
