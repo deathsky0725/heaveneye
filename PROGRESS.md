@@ -147,8 +147,8 @@ spec: `plan.phase-e-team-health.md` · concept: small PR / agile · orchestrate:
 | E2 /api/providers rollup | ✅ done | bd01873 (curl-verified: anthropic/minimax) |
 | E3 ProviderPanel (FE) | ✅ done | 2f1f1f4 · yanxin QA vision PASS + ji-ziyue visual PASS |
 | E6 stuck-worker detector | ✅ done | 132b682 (healthFlag: crash-loop>iter-exhausted>stuck) |
-| E8 health flag visual (FE) | 🔄 running | shihao → yanxin QA |
-| E4 rate-limit counter (STEP 0) | 🔄 running | yefan investigate |
+| E8 health flag visual (FE) | ✅ done | 8257bd1 · orange ring+tooltip · ji-ziyue verified (E6 flagged yanxin stuck จริง=detector works e2e) |
+| E4 rate-limit counter | ⏸️ DEFER | STEP0 verdict B: 429/503 ต้องแก้ Hermes gateway core (post_api_error hook) = นอก scope dashboard → workstream แยก. E5 defer ตาม |
 | E5/E7/E9/E10 | ⬜ | |
 
 note: worker trend ดีขึ้น — E2 commit เอง+handoff (E1/E6 ยัง silent-done, review_watcher จับ). bundle 392.44/400 (คุมใกล้เพดาน).
