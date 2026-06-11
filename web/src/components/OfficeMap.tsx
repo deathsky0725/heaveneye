@@ -1109,6 +1109,47 @@ export function OfficeMap() {
                 )}
               </div>
 
+              {/* E8 — healthFlag warning ring + tooltip.
+                  Orange ring overlays the avatar when healthFlag is set.
+                  Tooltip shows the flag reason on hover.
+                  Static (no animation) when prefers-reduced-motion — the
+                  orange ring alone is sufficient visual signal. */}
+              {agent.healthFlag && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div
+                    className={`w-full h-full rounded-xl border-2 ${
+                      prefersReducedMotion
+                        ? 'border-orange-400/60'
+                        : 'border-orange-400/60 animate-pulse'
+                    }`}
+                    style={{ boxShadow: '0 0 8px 2px rgba(251,191,36,0.35)' }}
+                    aria-hidden
+                  />
+                </div>
+              )}
+              {agent.healthFlag && (
+                <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none">
+                  <div className="relative flex flex-col items-center">
+                    <div
+                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shadow-md whitespace-nowrap ${
+                        prefersReducedMotion
+                          ? 'bg-orange-400/20 text-orange-300 border-orange-400/40'
+                          : 'bg-orange-400/20 text-orange-300 border-orange-400/40'
+                      }`}
+                    >
+                      ⚠️{' '}
+                      {agent.healthFlag === 'stuck'
+                        ? 'ติดอยู่'
+                        : agent.healthFlag === 'crash-loop'
+                        ? 'ล้มเหลวซ้ำ'
+                        : 'หมด iteration'}
+                    </div>
+                    {/* Down-arrow caret */}
+                    <div className="w-1.5 h-1.5 rotate-45 bg-orange-400/20 border-b border-r border-orange-400/40 -mt-0.5" />
+                  </div>
+                </div>
+              )}
+
               {/* B1.3b — compact label (name + role only) positioned to avoid
                   overlap with neighbours. Status is shown via the sprite border
                   ring (STATUS_BORDER) and the name colour; the full status pill

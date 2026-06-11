@@ -32,6 +32,9 @@ app.get('/api/health', (c) => c.json(state.getSystemHealth() ?? { checkedAt: new
 
 app.get('/api/agents', (c) => c.json({ agents: state.snapshot() }));
 
+// Phase E2 — per-provider rollup: { provider, agents[], tokensTodayTotal }
+app.get('/api/providers', (c) => c.json({ providers: state.getProviders() }));
+
 app.get('/api/usage/5h', (c) => c.json({ usage: state.getUsage5h() }));
 
 app.get('/api/usage/24h', (c) => {
@@ -249,10 +252,10 @@ if (process.env.NODE_ENV !== 'production') {
   //   curl -X POST :7878/api/test/status -d '{"agent":"yanxin","status":"thinking"}'
   app.post('/api/test/status', async (c) => {
     const body = await c.req.json().catch(() => ({}));
-    const { agent, status, taskTitle, idleMinutes } = body as { agent?: AgentId; status?: AgentStatus; taskTitle?: string; idleMinutes?: number };
+    const { agent, status, taskTitle, idleMinutes, healthFlag } = body as { agent?: AgentId; status?: AgentStatus; taskTitle?: string; idleMinutes?: number; healthFlag?: 'stuck' | 'crash-loop' | 'iteration-exhausted' };
     if (!agent || !status) return c.json({ error: 'agent and status required' }, 400);
-    state.debugSetStatus(agent, status, taskTitle, idleMinutes);
-    return c.json({ ok: true, agent, status, idleMinutes });
+    state.debugSetStatus(agent, status, taskTitle, idleMinutes, healthFlag);
+    return c.json({ ok: true, agent, status, idleMinutes, healthFlag });
   });
 
   // Phase D — dev-only: fire a milestone 'completed' event to test D4 confetti.

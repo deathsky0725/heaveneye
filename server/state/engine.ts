@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { AGENTS, AGENT_IDS, type AgentId, HOME } from '../config.ts';
-import type { AgentSnapshot, AgentStatus, TokenUsage, ServerEvent, KanbanEventEntry, NotificationEntry, CrashNotificationEntry } from './types.ts';
+import type { AgentSnapshot, AgentStatus, TokenUsage, ServerEvent, KanbanEventEntry, NotificationEntry, CrashNotificationEntry } from './types.js';
+import { modelToProvider } from './types.js';
 
 type Listener = (event: ServerEvent) => void;
 
@@ -301,7 +302,36 @@ class StateEngine {
   }
 
   snapshot(): AgentSnapshot[] {
-    return AGENT_IDS.map((id) => this.agents.get(id)!);
+    return AGENT_IDS.map((id) => {
+      const agent = this.agents.get(id)!;
+      // Derive provider lazily so it always reflects currentModel regardless
+      // of how the agent was initialized (blankSnapshot vs patch vs mock)
+      return { ...agent, provider: modelToProvider(agent.currentModel ?? '') };
+    });
+  }
+
+  /** Phase E2 — per-provider rollup of agent snapshots + today's token totals */
+  getProviders(): Array<{ provider: string; agents: AgentId[]; tokensTodayTotal: number }> {
+    const snapshots = this.snapshot();
+    const map = new Map<string, { agents: AgentId[]; tokensTodayTotal: number }>();
+
+    for (const snap of snapshots) {
+      const prov = snap.provider ?? 'unknown';
+      let entry = map.get(prov);
+      if (!entry) {
+        entry = { agents: [], tokensTodayTotal: 0 };
+        map.set(prov, entry);
+      }
+      entry.agents.push(snap.id);
+      const t = snap.tokensToday;
+      entry.tokensTodayTotal += t.input + t.output + t.cacheRead + t.cacheCreate;
+    }
+
+    return Array.from(map.entries()).map(([provider, { agents, tokensTodayTotal }]) => ({
+      provider,
+      agents,
+      tokensTodayTotal,
+    }));
   }
 
   subscribe(fn: Listener): () => void {
@@ -315,7 +345,11 @@ class StateEngine {
 
   private patch(id: AgentId, partial: Partial<AgentSnapshot>) {
     const cur = this.agents.get(id)!;
-    const next: AgentSnapshot = { ...cur, ...partial, lastEventAt: new Date().toISOString() };
+    // Derive provider from currentModel whenever currentModel is part of the patch
+    const provider = partial.currentModel !== undefined
+      ? modelToProvider(partial.currentModel)
+      : cur.provider;
+    const next: AgentSnapshot = { ...cur, ...partial, provider, lastEventAt: new Date().toISOString() };
     this.agents.set(id, next);
     this.emit(next);
   }
@@ -339,10 +373,15 @@ class StateEngine {
    * title) so liveness poses (thinking / working / away) can be triggered
    * on demand for visual QA. Gated behind /api/test/status (dev only).
    */
-  debugSetStatus(id: AgentId, status: AgentStatus, taskTitle?: string, idleMinutes?: number) {
+  debugSetStatus(id: AgentId, status: AgentStatus, taskTitle?: string, idleMinutes?: number, healthFlag?: AgentSnapshot['healthFlag']) {
     if (!AGENTS[id]) return;
     if (taskTitle !== undefined) {
       this.patch(id, { currentTask: { id: 'debug', title: taskTitle } });
+    }
+    if (healthFlag !== undefined) {
+      // force a health flag for visual QA of E8 — on an idle agent it persists
+      // (checkStuckWorkers only processes running/claimed tasks, won't clobber).
+      this.patch(id, { healthFlag });
     }
     this.setStatus(id, status);
     // Backdate lastEventAt so D3 idle→away can be triggered without waiting
@@ -675,6 +714,13 @@ class StateEngine {
   }
 
   // === Crash notification queue (Phase D.2) ===
+  /** Phase E6 — patch healthFlag without affecting other agent fields.
+   *  Call this from the kanban watcher after checking kanban run data.
+   *  Pass undefined to clear the flag. */
+  patchHealthFlag(id: AgentId, flag: AgentSnapshot['healthFlag']) {
+    if (!AGENTS[id]) return;
+    this.patch(id, { healthFlag: flag });
+  }
 
   pushCrashNotification(entry: CrashNotificationEntry): void {
     if (this.crashNotifications.length >= StateEngine.CRASH_NOTIFICATION_MAX) {

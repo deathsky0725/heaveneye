@@ -138,6 +138,21 @@ spec: `plan.phase-d-liveness2.md` · D1 QA gate visual · D2 thinking pose · D3
 > **🎯 QA-with-vision validated:** yanxin (MiniMax-M3 vision) จับ visual bug จริงได้เอง. audit จับบั๊ก 4 ตัวที่ worker/code-review มองข้าม: verdict parser format · badge outer-gate · reduced-motion zzz · milestone regex literal-slashes.
 > **Test infra:** dev-only `/api/test/{status,milestone}` (force agent status/idleMinutes/milestone) สำหรับ visual QA ของ state-driven poses.
 
+## 🚧 Phase E — Team Health & Observability (2026-06-11 → in progress) · branch feat/phase-e-team-health
+spec: `plan.phase-e-team-health.md` · concept: small PR / agile · orchestrate: anmaioyi + ji-ziyue audit
+
+| Task | Status | Notes |
+|------|--------|-------|
+| E1 provider derive helper | ✅ done | b1659a9 (modelToProvider + provider field) |
+| E2 /api/providers rollup | ✅ done | bd01873 (curl-verified: anthropic/minimax) |
+| E3 ProviderPanel (FE) | ✅ done | 2f1f1f4 · yanxin QA vision PASS + ji-ziyue visual PASS |
+| E6 stuck-worker detector | ✅ done | 132b682 (healthFlag: crash-loop>iter-exhausted>stuck) |
+| E8 health flag visual (FE) | ✅ done | 8257bd1 · orange ring+tooltip · ji-ziyue verified (E6 flagged yanxin stuck จริง=detector works e2e) |
+| E4 rate-limit counter | ⏸️ DEFER | STEP0 verdict B: 429/503 ต้องแก้ Hermes gateway core (post_api_error hook) = นอก scope dashboard → workstream แยก. E5 defer ตาม |
+| E5/E7/E9/E10 | ⬜ | |
+
+note: worker trend ดีขึ้น — E2 commit เอง+handoff (E1/E6 ยัง silent-done, review_watcher จับ). bundle 392.44/400 (คุมใกล้เพดาน).
+
 **Test infra (434f83c):** dev-only `POST /api/test/status {agent,status}` + `engine.debugSetStatus()` — force agent status เพื่อ verify state-driven poses สด (แก้ gap ที่ thinking/working transient เทสไม่ได้). ใช้ verify D3/D4 ต่อ
 
 **🎯 QA workflow VALIDATED (D1):** yanxin's vision QA (MiniMax-M3) จับ visual bug ได้เอง 2 รอบ + root-cause ตรง (badge missing on reload → outer gate line 667). พิสูจน์ dev→QA(vision)→ji-ziyue audit ทำงานจริง — จับสิ่งที่ code-review มองข้าม. bundle 388.31 kB ≤ 395.
