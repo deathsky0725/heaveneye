@@ -24,6 +24,12 @@ export interface AgentSnapshot {
   /** Provider derived from currentModel — 'minimax' | 'anthropic' | 'gemini' | 'unknown' */
   provider?: string;
   blockReason?: string;
+  /** Phase E6 — worker health flag derived from kanban run data.
+   *  'stuck' = no heartbeat / long elapsed with no completion.
+   *  'crash-loop' = consecutive_failures threshold exceeded.
+   *  'iteration-exhausted' = run timed out or gave_up.
+   *  undefined = healthy / idle. */
+  healthFlag?: 'stuck' | 'crash-loop' | 'iteration-exhausted';
 }
 
 export interface KanbanEventEntry {
