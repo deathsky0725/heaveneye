@@ -238,6 +238,11 @@ export function OfficeMap() {
     ziyue: false, anmaioyi: false, wenshu: false, yanxin: false, jianfeng: false, shihao: false, yefan: false,
   }));
 
+  // D3 — tick ref to re-evaluate isAway every ~30s so the away state
+  // transitions automatically without waiting for a new SSE event.
+  const AWAY_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+  const TICK_INTERVAL_MS  = 30 * 1000;     // 30 seconds
+
   // D1 — QA gate signals per task_id.  Each entry holds the qa_start
   // event (for the "testing" badge) and/or the verdict (for the pulse).
   // null = no active QA signal for that task_id.
@@ -252,6 +257,15 @@ export function OfficeMap() {
   const [qaSignals, setQaSignals] = useState<Record<string, QaSignal | null>>(() => ({
     yanxin: null,
   }));
+
+  // D3 — tick counter to force re-evaluation of isAway every TICK_INTERVAL_MS.
+  // Without this, the away state would only update on a new SSE event and the
+  // threshold would effectively never cross on its own.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), TICK_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
 
   const prevStatuses = useRef<Record<AgentId, AgentStatus>>({
     ziyue: 'idle', anmaioyi: 'idle', wenshu: 'idle', yanxin: 'idle', jianfeng: 'idle', shihao: 'idle', yefan: 'idle'
@@ -588,6 +602,13 @@ export function OfficeMap() {
         // Period 3s is slower than working lean 1.4s to signal contemplation vs typing rhythm.
         // Composes with shouldBob: tilt takes priority (thinking > idle bob).
         const shouldTilt  = isThinking && !isWaddling && !isHovered && !prefersReducedMotion;
+        // D3 — away state: idle + elapsed > threshold.  `tick` is included in
+        // the dependency chain so the check re-runs every TICK_INTERVAL_MS
+        // even when no SSE event arrives.  Only idle agents can be away;
+        // thinking/working/handoff/QA badges take priority (never away).
+        const isAway = agent.status === 'idle'
+          && !!agent.lastEventAt
+          && (Date.now() - new Date(agent.lastEventAt).getTime()) > AWAY_THRESHOLD_MS;
         const bobDelay = IDLE_BOB_STAGGER[agent.id] ?? 0;
         const isCore = CORE_AGENTS.has(agent.id);
         const { row: homeRow, col: homeCol } = ISO_GRID[agent.id];
@@ -614,6 +635,9 @@ export function OfficeMap() {
             animate={{
               left: `${coords.x}%`,
               top: `${coords.y}%`,
+              // D3 — dim to ~0.55 opacity when away (idle + past threshold).
+              // Activity/status changes reset to full opacity immediately.
+              opacity: isAway ? 0.55 : 1,
             }}
             transition={normalTransition}
             onAnimationComplete={() => handleArrival(agent.id)}
@@ -871,6 +895,38 @@ export function OfficeMap() {
                       aria-label="thinking"
                     >
                       •••
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* 💤 D3 — zzz indicator when away (idle + past threshold).
+                  Subtle floating "zzz" above the avatar, distinct from the
+                  thinking dots. Static when prefers-reduced-motion (dim
+                  still applies, only animation is skipped). */}
+              <AnimatePresence>
+                {isAway && !speech && (
+                  <motion.div
+                    key="away"
+                    initial={{ scale: 0, opacity: 0, y: 6 }}
+                    animate={{ scale: 1, opacity: 0.75, y: prefersReducedMotion ? 0 : [0, -1.5, 0] }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    transition={{
+                      scale: { duration: 0.25 },
+                      opacity: { duration: 0.3 },
+                      // reduced-motion: no looping float (y stays 0); dim still applies.
+                      ...(prefersReducedMotion
+                        ? {}
+                        : { y: { repeat: Infinity, repeatType: 'loop', duration: 2.4, ease: 'easeInOut' } }),
+                    }}
+                    className="absolute -top-7 pointer-events-none select-none"
+                  >
+                    <span
+                      className={prefersReducedMotion ? 'text-[10px]' : 'text-[10px]'}
+                      style={{ fontFamily: 'monospace', letterSpacing: '-0.1em' }}
+                      aria-label="away"
+                    >
+                      zzz
                     </span>
                   </motion.div>
                 )}
