@@ -1,5 +1,7 @@
 # 🩺 Heaveneye — Phase E: Team Health & Observability
 
+> **STATUS 2026-06-11: CORE SHIPPED ✅** — E1 (provider derive) · E2 (/api/providers) · E3 (ProviderPanel) · E6 (stuck-worker detector) · E8 (health visual) committed+audited → merged main. **Deferred:** E4+E5 (rate-limit — ต้องแก้ Hermes gateway core post_api_error hook, นอก scope dashboard) · E7 (silent-done flag) · E9 (health strip) · E10 (reliability stats). หยุดที่ core เพื่อไป workflow redesign (พี่เบญ directive). เปิดต่อภายหลังได้.
+>
 > **เจตนา:** ทำให้ "สุขภาพทีม" มองเห็นได้. Session 2026-06-10/11 บินบอด 3 เรื่อง: (1) MiniMax-M3 ชน 5h quota แบบไม่รู้ตัว → C3 crash, (2) shihao ติดลูป 2.5h กว่าจะรู้, (3) worker self-complete โดยไม่มี handoff. Phase E = surface พวกนี้บน dashboard.
 > **ฐาน:** main = 1c80870 (B1+C+D merged). bundle 390.45 kB.
 > **Roadmap:** `ROADMAP.md` Phase E.
