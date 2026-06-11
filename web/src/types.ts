@@ -21,6 +21,8 @@ export interface AgentSnapshot {
   tokensToday: TokenUsage;
   lastEventAt?: string;
   currentModel?: string;
+  /** Provider derived from currentModel — 'minimax' | 'anthropic' | 'gemini' | 'unknown' */
+  provider?: string;
   blockReason?: string;
 }
 

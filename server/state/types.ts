@@ -9,6 +9,19 @@ export interface TokenUsage {
   cacheCreate: number;
 }
 
+/**
+ * Derive provider name from a model string.
+ * Used by both BE (engine.ts) and FE (ProviderPanel) — kept in one place
+ * so the mapping logic is never duplicated.
+ */
+export function modelToProvider(model: string): string {
+  if (!model) return 'unknown';
+  if (model.startsWith('MiniMax-M')) return 'minimax';
+  if (model.startsWith('claude-') || model.startsWith('Claude')) return 'anthropic';
+  if (model.startsWith('gemini-')) return 'gemini';
+  return 'unknown';
+}
+
 export interface AgentSnapshot {
   id: AgentId;
   name: string;
@@ -22,6 +35,8 @@ export interface AgentSnapshot {
   tokensToday: TokenUsage;
   lastEventAt?: string;
   currentModel?: string;
+  /** Provider derived from currentModel — 'minimax' | 'anthropic' | 'gemini' | 'unknown' */
+  provider?: string;
   blockReason?: string;
 }
 

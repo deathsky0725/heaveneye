@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { AGENTS, AGENT_IDS, type AgentId, HOME } from '../config.ts';
-import type { AgentSnapshot, AgentStatus, TokenUsage, ServerEvent, KanbanEventEntry, NotificationEntry, CrashNotificationEntry } from './types.ts';
+import type { AgentSnapshot, AgentStatus, TokenUsage, ServerEvent, KanbanEventEntry, NotificationEntry, CrashNotificationEntry } from './types.js';
+import { modelToProvider } from './types.js';
 
 type Listener = (event: ServerEvent) => void;
 
@@ -301,7 +302,12 @@ class StateEngine {
   }
 
   snapshot(): AgentSnapshot[] {
-    return AGENT_IDS.map((id) => this.agents.get(id)!);
+    return AGENT_IDS.map((id) => {
+      const agent = this.agents.get(id)!;
+      // Derive provider lazily so it always reflects currentModel regardless
+      // of how the agent was initialized (blankSnapshot vs patch vs mock)
+      return { ...agent, provider: modelToProvider(agent.currentModel ?? '') };
+    });
   }
 
   subscribe(fn: Listener): () => void {
@@ -315,7 +321,11 @@ class StateEngine {
 
   private patch(id: AgentId, partial: Partial<AgentSnapshot>) {
     const cur = this.agents.get(id)!;
-    const next: AgentSnapshot = { ...cur, ...partial, lastEventAt: new Date().toISOString() };
+    // Derive provider from currentModel whenever currentModel is part of the patch
+    const provider = partial.currentModel !== undefined
+      ? modelToProvider(partial.currentModel)
+      : cur.provider;
+    const next: AgentSnapshot = { ...cur, ...partial, provider, lastEventAt: new Date().toISOString() };
     this.agents.set(id, next);
     this.emit(next);
   }
