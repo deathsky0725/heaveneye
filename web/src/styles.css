@@ -212,6 +212,27 @@ html, body, #root { height: 100%; }
 .anim-thought-dots { animation: thought-dots 2s ease-in-out infinite; }
 .anim-head-tilt    { animation: head-tilt 3s ease-in-out infinite; }
 
+/* D4 — Milestone confetti burst: 16 particles fly from centre outward,
+   fade out, gravity bias downward.  pointer-events-none on the container. */
+@keyframes confetti-particle {
+  0%   { transform: translate(0, 0) scale(1);   opacity: 1; }
+  100% { transform: translate(var(--tx), var(--ty)) scale(0.2); opacity: 0; }
+}
+.confetti-particle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  animation: confetti-particle 1.6s ease-out forwards;
+  pointer-events: none;
+}
+
+/* D4 — Reduced-motion fallback: subtle amber screen flash */
+@keyframes confetti-flash {
+  0%   { background-color: rgba(245, 158, 11, 0.18); }
+  100% { background-color: transparent; }
+}
+.animate-confetti-flash { animation: confetti-flash 1.6s ease-out forwards; }
+
 /* ── Glass panel base ── */
 .glass-surface {
   background: rgba(15, 23, 42, 0.7);

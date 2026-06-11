@@ -202,6 +202,35 @@ const AGENT_WRAPPER_H = ISO_DESK_DEPTH + (ISO_DESK_HALF_H + ISO_DESK_PAD) * 2;  
 // (which fills the wrapper), that's y = (depth + halfH + pad) / vbH.
 const DESK_TOP_Y_PCT = ((ISO_DESK_DEPTH + ISO_DESK_HALF_H + ISO_DESK_PAD) / AGENT_WRAPPER_H) * 100;
 
+// D4 — Milestone confetti burst constants.
+// 16 particles (8 colours × 2 sizes), radial spread, no npm dep.
+// Each particle has a random translate target (--tx, --ty), a random
+// animation delay, and a random size.  Shapes vary (circle vs rounded rect).
+const CONFETTI_COLORS = [
+  '#f59e0b', '#10b981', '#3b82f6', '#ef4444',
+  '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+  '#f59e0b', '#10b981', '#3b82f6', '#ef4444',
+  '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+];
+// Random translate-X targets: spread across ±30% of container width
+const CONFETTI_TX: number[] = [
+  -28, -18, -8,  8, 18, 28, -22, 22,
+  -15,  15, -5,  5, 25, -25,  12, -12,
+];
+// Random translate-Y targets: gravity bias downward (±15%)
+const CONFETTI_TY: number[] = [
+  -18,  12, -8, -14,  10,  -5,  15, -10,
+    8, -12,  18,   5, -18,  14,  -6,   9,
+];
+const CONFETTI_DELAYS: number[] = [
+  0, 30, 60, 90, 15, 45, 75, 105,
+  20, 50, 80, 10, 40, 70, 100, 35,
+];
+const CONFETTI_SIZES: string[] = [
+  '6px', '5px', '7px', '5px', '6px', '4px', '6px', '5px',
+  '5px', '7px', '4px', '6px', '5px', '6px', '5px', '4px',
+];
+
 export function OfficeMap() {
   const agents = useStore((s) => s.agents);
   const openDetailPanel = useStore((s) => s.openDetailPanel);
@@ -266,6 +295,13 @@ export function OfficeMap() {
     const id = setInterval(() => setTick((n) => n + 1), TICK_INTERVAL_MS);
     return () => clearInterval(id);
   }, []);
+
+  // D4 — milestone confetti state.  One-shot burst triggered when a completed
+  // kanban event carries a milestone marker (🎉 or /milestone|phase.*complete/i
+  // in task_title).  Cleared automatically after the CSS animation finishes.
+  const [confettiActive, setConfettiActive] = useState(false);
+  // Mount guard: skip stale buffered completed events from a prior session.
+  const didMountConfetti = useRef(false);
 
   const prevStatuses = useRef<Record<AgentId, AgentStatus>>({
     ziyue: 'idle', anmaioyi: 'idle', wenshu: 'idle', yanxin: 'idle', jianfeng: 'idle', shihao: 'idle', yefan: 'idle'
@@ -373,6 +409,25 @@ export function OfficeMap() {
         }, 1500);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
+
+  // D4 — milestone confetti: detect completed kanban events with milestone
+  // markers (🎉 or /milestone|phase.*complete/i in task_title).  Fires a
+  // one-shot confetti burst in the office area for ~1.8s.
+  // Mount guard: skips stale events buffered from a prior session.
+  // reduced-motion: shows a subtle flash instead of confetti.
+  useEffect(() => {
+    const ev = events[0];
+    if (!ev) return;
+    if (ev.kind !== 'completed') return;
+    const title = ev.task_title ?? '';
+    const isMilestone = title.includes('🎉') || /milestone|phase.*complete/i.test(title);
+    if (!isMilestone) return;
+    if (!didMountConfetti.current) { didMountConfetti.current = true; return; }
+    if (prefersReducedMotion) return;
+    setConfettiActive(true);
+    setTimeout(() => setConfettiActive(false), 1800);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events]);
 
@@ -1088,6 +1143,34 @@ export function OfficeMap() {
           </motion.div>
         );
       })}
+    {/* D4 — Milestone confetti burst.
+          16 coloured dots fly outward from the office centre and fade,
+          one-shot, pointer-events-none.  No npm dep — pure CSS animation.
+          Reduced-motion: this section is conditionally rendered (skipped). */}
+      {confettiActive && !prefersReducedMotion && (
+        <div className="absolute inset-0 pointer-events-none z-40 overflow-hidden" aria-hidden>
+          {CONFETTI_COLORS.map((color, i) => (
+            <div
+              key={i}
+              className="confetti-particle"
+              style={{
+                backgroundColor: color,
+                '--tx': `${CONFETTI_TX[i]}%`,
+                '--ty': `${CONFETTI_TY[i]}%`,
+                animationDelay: `${CONFETTI_DELAYS[i]}ms`,
+                width: CONFETTI_SIZES[i],
+                height: CONFETTI_SIZES[i],
+                borderRadius: i % 3 === 0 ? '50%' : '15%',
+              } as React.CSSProperties}
+            />
+          ))}
+        </div>
+      )}
+      {/* D4 — Milestone flash (reduced-motion alternative): subtle amber
+          screen flash instead of confetti particles. */}
+      {confettiActive && prefersReducedMotion && (
+        <div className="absolute inset-0 pointer-events-none z-40 animate-confetti-flash" aria-hidden />
+      )}
     </div>
   );
 }
