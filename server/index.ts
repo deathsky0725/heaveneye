@@ -254,6 +254,20 @@ if (process.env.NODE_ENV !== 'production') {
     state.debugSetStatus(agent, status, taskTitle, idleMinutes);
     return c.json({ ok: true, agent, status, idleMinutes });
   });
+
+  // Phase D — dev-only: fire a milestone 'completed' event to test D4 confetti.
+  app.post('/api/test/milestone', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { agent = 'anmaioyi', taskTitle = '🎉 Phase D complete' } = body as { agent?: AgentId; taskTitle?: string };
+    state.onKanbanEvent({
+      ts: new Date().toISOString(),
+      agent,
+      kind: 'completed',
+      task_id: 'test-milestone',
+      task_title: taskTitle,
+    });
+    return c.json({ ok: true, kind: 'completed', agent, taskTitle });
+  });
 }
 
 app.get('/api/notifications', (c) => {
