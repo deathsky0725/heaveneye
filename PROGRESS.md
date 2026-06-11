@@ -130,8 +130,10 @@ spec: `plan.phase-d-liveness2.md` · D1 QA gate visual · D2 thinking pose · D3
 | Task | Status | Notes |
 |------|--------|-------|
 | **D1 — QA gate visual** | ✅ done | STEP1 backend qa_start/qa_verdict (4e82b3b) + STEP2 frontend badge/pulse (4b1b1cd). 🔍 TESTING badge (state-derived) + ✓/✗ verdict pulse บน desk yanxin |
-| D2 — thinking pose | ⬜ next | |
-| D3 — idle→away | ⬜ | |
+| **D2 — thinking pose** | ✅ done | "•••" thought dots + head tilt ±2°/3s (31498c1). 3-state distinct: idle bob / thinking dots+tilt / working lean+glow. **Live-verified** (amber border + dots) via new /api/test/status |
+| D3 — idle→away | ⬜ next | |
 | D4 — milestone celebration | ⬜ (ปิด Phase) | |
+
+**Test infra (434f83c):** dev-only `POST /api/test/status {agent,status}` + `engine.debugSetStatus()` — force agent status เพื่อ verify state-driven poses สด (แก้ gap ที่ thinking/working transient เทสไม่ได้). ใช้ verify D3/D4 ต่อ
 
 **🎯 QA workflow VALIDATED (D1):** yanxin's vision QA (MiniMax-M3) จับ visual bug ได้เอง 2 รอบ + root-cause ตรง (badge missing on reload → outer gate line 667). พิสูจน์ dev→QA(vision)→ji-ziyue audit ทำงานจริง — จับสิ่งที่ code-review มองข้าม. bundle 388.31 kB ≤ 395.
