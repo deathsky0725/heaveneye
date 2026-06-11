@@ -8,6 +8,7 @@ import { TaskFeedSidebar } from './components/TaskFeedSidebar';
 import { SystemHealth } from './components/SystemHealth';
 import { CrossBoardDashboard } from './components/CrossBoardDashboard';
 import { ReportViewer } from './components/ReportViewer';
+import { ProviderPanel } from './components/ProviderPanel';
 import { ToastContainer } from './components/Toast';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ExportPanel } from './components/ExportPanel';
@@ -122,6 +123,11 @@ export default function App() {
         {/* Gateway health strip */}
         <div className="px-6 mb-4">
           <SystemHealth />
+        </div>
+
+        {/* Provider rollup */}
+        <div className="px-6 mb-4">
+          <ProviderPanel />
         </div>
 
         {/* Virtual Office Map */}
