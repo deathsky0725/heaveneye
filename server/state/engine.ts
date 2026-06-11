@@ -334,6 +334,19 @@ class StateEngine {
     // 'blocked' stays until explicitly cleared (no linger timer)
   }
 
+  /**
+   * DEV/TEST ONLY — force an agent's status (and optionally a current-task
+   * title) so liveness poses (thinking / working / away) can be triggered
+   * on demand for visual QA. Gated behind /api/test/status (dev only).
+   */
+  debugSetStatus(id: AgentId, status: AgentStatus, taskTitle?: string) {
+    if (!AGENTS[id]) return;
+    if (taskTitle !== undefined) {
+      this.patch(id, { currentTask: { id: 'debug', title: taskTitle } });
+    }
+    this.setStatus(id, status);
+  }
+
   // === Kanban events ===
   onKanbanActive(id: AgentId, board: string, taskId: string, taskTitle?: string) {
     if (!AGENTS[id]) return;
