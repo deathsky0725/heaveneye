@@ -3,8 +3,8 @@
 > **Status: view-only dashboard (post-pivot 2026-05-23, all phases complete 2026-05-27)**
 > สั่งงาน agent จริง = ใช้ terminal/claude CLI/gemini CLI โดยตรง. Heaveneye = ดูสถานะ + ปุ่ม control แค่ที่จำเป็น
 
-Last updated: 2026-06-09 by anmaioyi
-Current phase: **Phase C Liveness — C3 STEP 1+2 + C4 dispatched, in progress**
+Last updated: 2026-06-11 by ji-ziyue
+Current phase: **Phase D (Office Liveness 2.0) COMPLETE + merged+pushed to main (541c4a0). Phase E (Team Health) = next — see `plan.phase-e-team-health.md`**
 
 ---
 

@@ -7,7 +7,7 @@
 
 ---
 
-## Phase D — Office Liveness 2.0  ·  ต่อยอด C (S–M)
+## Phase D — Office Liveness 2.0  ·  ✅ DONE (merged main 1c80870, 2026-06-11)
 office สะท้อน **ทั้ง workflow** รวม QA gate ใหม่ ไม่ใช่แค่ dev→anmaioyi
 - **QA gate visual**: yanxin QA desk + "testing" animation ตอนรัน + สัญญาณ PASS(เขียว)/FAIL(แดง) บน handoff
 - **thinking pose** แยกจาก working ชัด (ตอนนี้ thinking≈working) + "reviewing huddle" ตอน anmaioyi audit
