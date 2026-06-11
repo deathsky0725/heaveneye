@@ -23,6 +23,18 @@ import { appendResultMdEntry } from './resultMdUpdater.ts';
 import { relayStore } from '../state/relayStore.ts';
 import { recordAgentEvent } from './alertThresholds.ts';
 
+/** Phase E6 — stuck-worker detector config */
+interface StuckConfig {
+  /** Minutes after last heartbeat before flagging 'stuck' (default 20) */
+  stuckThresholdMin: number;
+  /** Consecutive failures threshold before flagging 'crash-loop' (default 3) */
+  crashLoopThreshold: number;
+}
+const DEFAULT_STUCK_CONFIG: StuckConfig = {
+  stuckThresholdMin: 20,
+  crashLoopThreshold: 3,
+};
+
 const BOARDS_ROOT = join(HOME, '.hermes/kanban/boards');
 const POLL_INTERVAL_MS = 1_000;
 
@@ -250,7 +262,77 @@ function buildDiscordEmbed(eventKind: string, agent: AgentId, taskId: string, ta
   }
 }
 
-function pollBoard(b: BoardState): void {
+function checkStuckWorkers(b: BoardState, config: StuckConfig = DEFAULT_STUCK_CONFIG): void {
+  const now = Math.floor(Date.now() / 1000); // unix seconds
+  const stuckThresholdSec = config.stuckThresholdMin * 60;
+
+  // Query running tasks with their run data: elapsed, heartbeat, consecutive failures
+  const rows = b.db.query(`
+    SELECT
+      t.id          AS task_id,
+      t.assignee,
+      t.title,
+      t.consecutive_failures,
+      r.started_at,
+      r.last_heartbeat_at,
+      r.ended_at,
+      r.outcome,
+      r.status      AS run_status,
+      (CASE
+        WHEN r.ended_at   IS NOT NULL THEN r.ended_at   - r.started_at
+        WHEN r.started_at IS NOT NULL THEN ?            - r.started_at
+        ELSE 0
+       END)        AS elapsed_s
+    FROM tasks t
+    LEFT JOIN task_runs r ON r.id = t.current_run_id
+    WHERE t.status IN ('running', 'claimed')
+  `).all(now) as {
+    task_id: string;
+    assignee: string | null;
+    title: string | null;
+    consecutive_failures: number;
+    started_at: number | null;
+    last_heartbeat_at: number | null;
+    ended_at: number | null;
+    outcome: string | null;
+    run_status: string | null;
+    elapsed_s: number;
+  }[];
+
+  for (const row of rows) {
+    if (!isKnownAgent(row.assignee)) continue;
+
+    // --- crash-loop: too many consecutive failures ---
+    if (row.consecutive_failures >= config.crashLoopThreshold) {
+      state.patchHealthFlag(row.assignee, 'crash-loop');
+      continue;
+    }
+
+    // --- iteration-exhausted: timed-out or gave_up run ---
+    if (row.outcome === 'timed_out' || row.outcome === 'gave_up') {
+      state.patchHealthFlag(row.assignee, 'iteration-exhausted');
+      continue;
+    }
+
+    // --- stuck: elapsed > threshold AND no recent heartbeat ---
+    // Only flag if we actually have run data (started_at not null).
+    if (row.started_at != null) {
+      const hbAge = row.last_heartbeat_at != null
+        ? now - row.last_heartbeat_at
+        : now - row.started_at; // fallback to start time if no heartbeat yet
+
+      if (row.elapsed_s > stuckThresholdSec && hbAge > stuckThresholdSec) {
+        state.patchHealthFlag(row.assignee, 'stuck');
+        continue;
+      }
+    }
+
+    // --- healthy: clear any stale flag ---
+    state.patchHealthFlag(row.assignee, undefined);
+  }
+}
+
+function pollBoard(b: BoardState, config?: StuckConfig): void {
   const rows = b.db.query(`
     SELECT e.id, e.task_id, e.kind, e.payload, e.created_at,
            t.assignee, t.title
@@ -281,6 +363,9 @@ function pollBoard(b: BoardState): void {
     if (!isKnownAgent(r.assignee)) continue;
     state.onKanbanActive(r.assignee, b.slug, r.task_id, r.title ?? r.task_id);
   }
+
+  // Phase E6 — stuck-worker detector: evaluate health flags from kanban run data
+  checkStuckWorkers(b, config);
 }
 
 export async function startKanbanWatcher(opts: { replayHistory?: boolean } = {}) {
@@ -328,7 +413,7 @@ export async function startKanbanWatcher(opts: { replayHistory?: boolean } = {})
   const timer = setInterval(() => {
     tick++;
     for (const b of boards) {
-      try { pollBoard(b); }
+      try { pollBoard(b, DEFAULT_STUCK_CONFIG); }
       catch (e) {
         if (tick === 1 || tick % 60 === 0) {
           console.warn(`[kanban] poll error board=${b.slug}:`, e);

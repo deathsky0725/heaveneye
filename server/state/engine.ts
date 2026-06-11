@@ -685,6 +685,13 @@ class StateEngine {
   }
 
   // === Crash notification queue (Phase D.2) ===
+  /** Phase E6 — patch healthFlag without affecting other agent fields.
+   *  Call this from the kanban watcher after checking kanban run data.
+   *  Pass undefined to clear the flag. */
+  patchHealthFlag(id: AgentId, flag: AgentSnapshot['healthFlag']) {
+    if (!AGENTS[id]) return;
+    this.patch(id, { healthFlag: flag });
+  }
 
   pushCrashNotification(entry: CrashNotificationEntry): void {
     if (this.crashNotifications.length >= StateEngine.CRASH_NOTIFICATION_MAX) {
