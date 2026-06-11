@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { PORT, AGENT_IDS, AGENTS, type AgentId, HOME, INBOX_PATH } from './config.ts';
 import { state } from './state/engine.ts';
 import { relayStore } from './state/relayStore.ts';
-import type { ServerEvent } from './state/types.ts';
+import type { ServerEvent, AgentStatus } from './state/types.ts';
 import { startHermesWatcher } from './watchers/hermes.ts';
 import { startHermesEventWatcher } from './watchers/hermes-events.ts';
 import { startClaudeWatcher } from './watchers/claude.ts';
@@ -228,6 +228,45 @@ if (process.env.NODE_ENV !== 'production') {
       payload: { source: 'test_endpoint' },
     });
     return c.json({ ok: true, from, to, taskId });
+  });
+
+  // Phase D — dev-only test endpoint to fire qa_start for visual testing
+  app.post('/api/test/qa-start', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { taskId = 't_89a2728a', taskTitle = 'QA — verify D1 STEP 2' } = body as { taskId?: string; taskTitle?: string };
+    state.onKanbanEvent({
+      ts: new Date().toISOString(),
+      agent: 'yanxin',
+      kind: 'qa_start',
+      task_id: taskId,
+      task_title: taskTitle,
+    });
+    return c.json({ ok: true, kind: 'qa_start', agent: 'yanxin', taskId });
+  });
+
+  // Phase D — dev-only: force an agent's status to visually test liveness
+  // poses on demand (thinking dots+tilt, working lean+glow, idle, away, etc.).
+  //   curl -X POST :7878/api/test/status -d '{"agent":"yanxin","status":"thinking"}'
+  app.post('/api/test/status', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { agent, status, taskTitle, idleMinutes } = body as { agent?: AgentId; status?: AgentStatus; taskTitle?: string; idleMinutes?: number };
+    if (!agent || !status) return c.json({ error: 'agent and status required' }, 400);
+    state.debugSetStatus(agent, status, taskTitle, idleMinutes);
+    return c.json({ ok: true, agent, status, idleMinutes });
+  });
+
+  // Phase D — dev-only: fire a milestone 'completed' event to test D4 confetti.
+  app.post('/api/test/milestone', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { agent = 'anmaioyi', taskTitle = '🎉 Phase D complete' } = body as { agent?: AgentId; taskTitle?: string };
+    state.onKanbanEvent({
+      ts: new Date().toISOString(),
+      agent,
+      kind: 'completed',
+      task_id: 'test-milestone',
+      task_title: taskTitle,
+    });
+    return c.json({ ok: true, kind: 'completed', agent, taskTitle });
   });
 }
 

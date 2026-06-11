@@ -334,6 +334,30 @@ class StateEngine {
     // 'blocked' stays until explicitly cleared (no linger timer)
   }
 
+  /**
+   * DEV/TEST ONLY — force an agent's status (and optionally a current-task
+   * title) so liveness poses (thinking / working / away) can be triggered
+   * on demand for visual QA. Gated behind /api/test/status (dev only).
+   */
+  debugSetStatus(id: AgentId, status: AgentStatus, taskTitle?: string, idleMinutes?: number) {
+    if (!AGENTS[id]) return;
+    if (taskTitle !== undefined) {
+      this.patch(id, { currentTask: { id: 'debug', title: taskTitle } });
+    }
+    this.setStatus(id, status);
+    // Backdate lastEventAt so D3 idle→away can be triggered without waiting
+    // (patch() always stamps lastEventAt = now, so override it afterwards).
+    if (idleMinutes !== undefined) {
+      const cur = this.agents.get(id)!;
+      const next: AgentSnapshot = {
+        ...cur,
+        lastEventAt: new Date(Date.now() - idleMinutes * 60_000).toISOString(),
+      };
+      this.agents.set(id, next);
+      this.emit(next);
+    }
+  }
+
   // === Kanban events ===
   onKanbanActive(id: AgentId, board: string, taskId: string, taskTitle?: string) {
     if (!AGENTS[id]) return;

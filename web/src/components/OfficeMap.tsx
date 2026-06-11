@@ -202,6 +202,35 @@ const AGENT_WRAPPER_H = ISO_DESK_DEPTH + (ISO_DESK_HALF_H + ISO_DESK_PAD) * 2;  
 // (which fills the wrapper), that's y = (depth + halfH + pad) / vbH.
 const DESK_TOP_Y_PCT = ((ISO_DESK_DEPTH + ISO_DESK_HALF_H + ISO_DESK_PAD) / AGENT_WRAPPER_H) * 100;
 
+// D4 — Milestone confetti burst constants.
+// 16 particles (8 colours × 2 sizes), radial spread, no npm dep.
+// Each particle has a random translate target (--tx, --ty), a random
+// animation delay, and a random size.  Shapes vary (circle vs rounded rect).
+const CONFETTI_COLORS = [
+  '#f59e0b', '#10b981', '#3b82f6', '#ef4444',
+  '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+  '#f59e0b', '#10b981', '#3b82f6', '#ef4444',
+  '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+];
+// Random translate-X targets: spread across ±30% of container width
+const CONFETTI_TX: number[] = [
+  -28, -18, -8,  8, 18, 28, -22, 22,
+  -15,  15, -5,  5, 25, -25,  12, -12,
+];
+// Random translate-Y targets: gravity bias downward (±15%)
+const CONFETTI_TY: number[] = [
+  -18,  12, -8, -14,  10,  -5,  15, -10,
+    8, -12,  18,   5, -18,  14,  -6,   9,
+];
+const CONFETTI_DELAYS: number[] = [
+  0, 30, 60, 90, 15, 45, 75, 105,
+  20, 50, 80, 10, 40, 70, 100, 35,
+];
+const CONFETTI_SIZES: string[] = [
+  '6px', '5px', '7px', '5px', '6px', '4px', '6px', '5px',
+  '5px', '7px', '4px', '6px', '5px', '6px', '5px', '4px',
+];
+
 export function OfficeMap() {
   const agents = useStore((s) => s.agents);
   const openDetailPanel = useStore((s) => s.openDetailPanel);
@@ -238,6 +267,42 @@ export function OfficeMap() {
     ziyue: false, anmaioyi: false, wenshu: false, yanxin: false, jianfeng: false, shihao: false, yefan: false,
   }));
 
+  // D3 — tick ref to re-evaluate isAway every ~30s so the away state
+  // transitions automatically without waiting for a new SSE event.
+  const AWAY_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+  const TICK_INTERVAL_MS  = 30 * 1000;     // 30 seconds
+
+  // D1 — QA gate signals per task_id.  Each entry holds the qa_start
+  // event (for the "testing" badge) and/or the verdict (for the pulse).
+  // null = no active QA signal for that task_id.
+  type QaSignal = {
+    task_id: string;
+    task_title?: string;
+    verdict: 'pass' | 'fail' | null;
+    // Absolute ms timestamp when the verdict pulse should expire.
+    // Cleared automatically by the render logic.
+    verdictExpiresAt: number | null;
+  };
+  const [qaSignals, setQaSignals] = useState<Record<string, QaSignal | null>>(() => ({
+    yanxin: null,
+  }));
+
+  // D3 — tick counter to force re-evaluation of isAway every TICK_INTERVAL_MS.
+  // Without this, the away state would only update on a new SSE event and the
+  // threshold would effectively never cross on its own.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), TICK_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // D4 — milestone confetti state.  One-shot burst triggered when a completed
+  // kanban event carries a milestone marker (🎉 or /milestone|phase.*complete/i
+  // in task_title).  Cleared automatically after the CSS animation finishes.
+  const [confettiActive, setConfettiActive] = useState(false);
+  // Mount guard: skip stale buffered completed events from a prior session.
+  const didMountConfetti = useRef(false);
+
   const prevStatuses = useRef<Record<AgentId, AgentStatus>>({
     ziyue: 'idle', anmaioyi: 'idle', wenshu: 'idle', yanxin: 'idle', jianfeng: 'idle', shihao: 'idle', yefan: 'idle'
   });
@@ -248,6 +313,12 @@ export function OfficeMap() {
   const walkTargetRef = useRef<Record<AgentId, AgentId>>({} as Record<AgentId, AgentId>);
 
   const getAgent = (id: AgentId): AgentSnapshot | undefined => agents.find((a) => a.id === id);
+
+  // D1 STEP 2.fix — derive testing badge from CURRENT agent state (not just
+  // qa_start events).  Shows on load when yanxin is already mid-QA.
+  const isYanxinQa =
+    getAgent('yanxin')?.status === 'working' &&
+    /^qa\b/i.test(getAgent('yanxin')?.currentTask?.title ?? '');
 
   // Trigger walk animation
   const triggerWalk = (agentId: AgentId, targetId: AgentId) => {
@@ -283,6 +354,80 @@ export function OfficeMap() {
     // `prefers-reduced-motion`: skip animation, still route logically
     if (prefersReducedMotion) return;
     triggerWalk(from_agent, to_agent ?? 'anmaioyi');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
+
+  // D1 STEP 2 — QA gate visual.  Listen for qa_start / qa_verdict events
+  // on the shared `events` ref already declared above.  Reuses the same
+  // events array; does NOT redeclare `const events` (would cause a block-
+  // scoped variable redeclaration error).
+  //
+  // Logic:
+  //   qa_start  → show "testing" badge on yanxin's desk (scan pulse, distinct
+  //               from the dev working glow).  Stays until a verdict arrives.
+  //   qa_verdict → show verdict pulse at yanxin's desk (✓ green / ✗ red)
+  //                for ~1.5s then auto-clear.  Clears the "testing" badge.
+  //
+  // Mount guard: skip stale buffered events from the prior session (same
+  // pattern as C3 didMountHandoff).
+  const didMountQa = useRef(false);
+  useEffect(() => {
+    const ev = events[0];
+    if (!ev) return;
+    if (ev.kind !== 'qa_start' && ev.kind !== 'qa_verdict') return;
+    if (!didMountQa.current) { didMountQa.current = true; return; }
+
+    if (ev.kind === 'qa_start') {
+      // Skip if yanxin is already in QA state — the state-derived isYanxinQa
+      // handles the badge on load / across reloads.  Still buffer the signal
+      // so a verdict can arrive and clear it.
+      if (!isYanxinQa) {
+        setQaSignals((prev) => ({
+          ...prev,
+          yanxin: { task_id: ev.task_id, task_title: ev.task_title, verdict: null, verdictExpiresAt: null },
+        }));
+      }
+    } else if (ev.kind === 'qa_verdict') {
+      // Show verdict pulse at yanxin's desk; auto-clear after 1.5s.
+      // reduced-motion: still set the signal (badge clears) but skip the
+      // timed expiry animation on the verdict pulse.
+      const expiresAt = prefersReducedMotion ? null : Date.now() + 1500;
+      setQaSignals((prev) => ({
+        ...prev,
+        yanxin: { task_id: ev.task_id, task_title: ev.task_title, verdict: ev.verdict ?? null, verdictExpiresAt: expiresAt },
+      }));
+      if (!prefersReducedMotion) {
+        setTimeout(() => {
+          setQaSignals((prev) => {
+            const cur = prev.yanxin;
+            // Only clear if this signal is still the one we set (no newer event arrived)
+            if (cur && cur.verdictExpiresAt && Date.now() >= cur.verdictExpiresAt) {
+              return { ...prev, yanxin: null };
+            }
+            return prev;
+          });
+        }, 1500);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
+
+  // D4 — milestone confetti: detect completed kanban events with milestone
+  // markers (🎉 or /milestone|phase.*complete/i in task_title).  Fires a
+  // one-shot confetti burst in the office area for ~1.8s.
+  // Mount guard: skips stale events buffered from a prior session.
+  // reduced-motion: shows a subtle flash instead of confetti.
+  useEffect(() => {
+    const ev = events[0];
+    if (!ev) return;
+    if (ev.kind !== 'completed') return;
+    const title = ev.task_title ?? '';
+    const isMilestone = title.includes('🎉') || /milestone|phase.*complete/i.test(title);
+    if (!isMilestone) return;
+    if (!didMountConfetti.current) { didMountConfetti.current = true; return; }
+    if (prefersReducedMotion) return;
+    setConfettiActive(true);
+    setTimeout(() => setConfettiActive(false), 1800);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events]);
 
@@ -507,7 +652,18 @@ export function OfficeMap() {
         // the two poses share the same a11y behavior.  Hover suppresses
         // lean so the hover raise (B1.5 y:-2.5) reads cleanly without
         // competing with the rotate/scaleY pose.
-        const shouldLean = isWorking && !isWaddling && !isHovered && !prefersReducedMotion;
+        const shouldLean  = isWorking && !isWaddling && !isHovered && !prefersReducedMotion;
+        // D2 — head tilt when thinking (not waddling, not hovered, motion allowed).
+        // Period 3s is slower than working lean 1.4s to signal contemplation vs typing rhythm.
+        // Composes with shouldBob: tilt takes priority (thinking > idle bob).
+        const shouldTilt  = isThinking && !isWaddling && !isHovered && !prefersReducedMotion;
+        // D3 — away state: idle + elapsed > threshold.  `tick` is included in
+        // the dependency chain so the check re-runs every TICK_INTERVAL_MS
+        // even when no SSE event arrives.  Only idle agents can be away;
+        // thinking/working/handoff/QA badges take priority (never away).
+        const isAway = agent.status === 'idle'
+          && !!agent.lastEventAt
+          && (Date.now() - new Date(agent.lastEventAt).getTime()) > AWAY_THRESHOLD_MS;
         const bobDelay = IDLE_BOB_STAGGER[agent.id] ?? 0;
         const isCore = CORE_AGENTS.has(agent.id);
         const { row: homeRow, col: homeCol } = ISO_GRID[agent.id];
@@ -534,6 +690,9 @@ export function OfficeMap() {
             animate={{
               left: `${coords.x}%`,
               top: `${coords.y}%`,
+              // D3 — dim to ~0.55 opacity when away (idle + past threshold).
+              // Activity/status changes reset to full opacity immediately.
+              opacity: isAway ? 0.55 : 1,
             }}
             transition={normalTransition}
             onAnimationComplete={() => handleArrival(agent.id)}
@@ -581,6 +740,75 @@ export function OfficeMap() {
               }
             />
 
+            {/* D1 — QA gate visual on yanxin's desk:
+                (1) "testing" badge with scan pulse when qa_start received but no verdict yet.
+                (2) Verdict pulse (✓ green / ✗ red) for ~1.5s then auto-clear.
+
+                All wrapped in AnimatePresence so they exit cleanly when the
+                signal is cleared by the setTimeout in the QA useEffect. */}
+            <AnimatePresence>
+              {agent.id === 'yanxin' && (isYanxinQa || qaSignals.yanxin) && (
+                <>
+                  {/* "testing" badge — state-derived + event-driven.
+ State-derived: isYanxinQa when yanxin is mid-QA on load.
+                      Event-driven: qaSignals from qa_start event.
+                      Both suppressed once a verdict arrives. */}
+                  {(isYanxinQa || qaSignals.yanxin) && !qaSignals.yanxin?.verdict && (
+                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+                      <div className="relative flex flex-col items-center">
+                        <div
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shadow-md ${
+                            prefersReducedMotion
+                              ? 'bg-amber-400/20 text-amber-300 border-amber-400/40'
+                              : 'bg-amber-400/20 text-amber-300 border-amber-400/40'
+                          }`}
+                        >
+                          🔍 TESTING
+                        </div>
+                        {/* Scan pulse — amber ring expanding outward from the badge.
+                            Distinct from the dev working glow (cyan pulse on desk).
+                            Only animates when motion is allowed. */}
+                        {!prefersReducedMotion && (
+                          <motion.div
+                            key="qa-scan"
+                            initial={{ scale: 0.6, opacity: 0.9 }}
+                            animate={{ scale: 3.0, opacity: 0 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 1.2, repeat: Infinity, ease: 'easeOut' }}
+                            className="absolute rounded-full border border-amber-400/50"
+                            style={{ top: '-4px', width: '32px', height: '32px', marginLeft: '-16px' }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Verdict pulse — shows for ~1.5s then the useEffect setTimeout clears it.
+                      PASS → green ✓, FAIL → red ✗.  Replaces the testing badge. */}
+                  {qaSignals.yanxin?.verdict && (
+                    <motion.div
+                      key={`qa-verdict-${qaSignals.yanxin!.task_id}`}
+                      initial={{ scale: 0.4, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.4, opacity: 0 }}
+                      transition={{ duration: 0.25, ease: 'backOut' }}
+                      className="absolute -top-8 left-1/2 -translate-x-1/2 z-40 pointer-events-none"
+                    >
+                      <div
+                        className={`text-lg font-bold w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${
+                          qaSignals.yanxin!.verdict === 'pass'
+                            ? 'bg-emerald-500/90 text-white ring-2 ring-emerald-400/60'
+                            : 'bg-rose-500/90 text-white ring-2 ring-rose-400/60'
+                        }`}
+                      >
+                        {qaSignals.yanxin!.verdict === 'pass' ? '✓' : '✗'}
+                      </div>
+                    </motion.div>
+                  )}
+                </>
+              )}
+            </AnimatePresence>
+
             {/* Avatar billboard — flat, ตั้งตรง, no rotate. Anchored so
                 its bottom sits on the desk top.
                 Outer <div>: positioning — left/top + translate(-50%, -100%)
@@ -622,6 +850,8 @@ export function OfficeMap() {
                   rotate: isWaddling
                     ? [-4, 4]
                     : shouldLean
+                    ? [-2, 2]
+                    : shouldTilt
                     ? [-2, 2]
                     : 0,
                   y: isWaddling
@@ -673,6 +903,15 @@ export function OfficeMap() {
                           delay: bobDelay,
                         },
                       }
+                    : shouldTilt
+                    ? {
+                        rotate: {
+                          repeat: Infinity,
+                          repeatType: 'mirror',
+                          duration: 3,
+                          ease: 'easeInOut',
+                        },
+                      }
                     : { duration: 0 }
                 }
                 className="flex flex-col items-center cursor-pointer group"
@@ -692,7 +931,9 @@ export function OfficeMap() {
                   whileHover={{ y: -2.5 }}
                   transition={{ type: 'spring', stiffness: 320, damping: 18 }}
                 >
-              {/* 💭 Thought bubble while thinking (idle conversation) */}
+              {/* 💭 D2 — thought dots "•••" loop above the avatar while thinking.
+                  Static dots (no animation) when prefers-reduced-motion is set,
+                  so the "thinking" state is still legible without motion. */}
               <AnimatePresence>
                 {isThinking && !speech && (
                   <motion.div
@@ -701,9 +942,47 @@ export function OfficeMap() {
                     animate={{ scale: 1, opacity: 1, y: 0 }}
                     exit={{ scale: 0, opacity: 0 }}
                     transition={{ duration: 0.25 }}
-                    className="absolute -top-7 text-lg pointer-events-none select-none"
+                    className="absolute -top-7 pointer-events-none select-none"
                   >
-                    💭
+                    <span
+                      className={prefersReducedMotion ? 'text-base' : 'text-base anim-thought-dots'}
+                      style={{ fontFamily: 'monospace', letterSpacing: '-0.05em' }}
+                      aria-label="thinking"
+                    >
+                      •••
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* 💤 D3 — zzz indicator when away (idle + past threshold).
+                  Subtle floating "zzz" above the avatar, distinct from the
+                  thinking dots. Static when prefers-reduced-motion (dim
+                  still applies, only animation is skipped). */}
+              <AnimatePresence>
+                {isAway && !speech && (
+                  <motion.div
+                    key="away"
+                    initial={{ scale: 0, opacity: 0, y: 6 }}
+                    animate={{ scale: 1, opacity: 0.75, y: prefersReducedMotion ? 0 : [0, -1.5, 0] }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    transition={{
+                      scale: { duration: 0.25 },
+                      opacity: { duration: 0.3 },
+                      // reduced-motion: no looping float (y stays 0); dim still applies.
+                      ...(prefersReducedMotion
+                        ? {}
+                        : { y: { repeat: Infinity, repeatType: 'loop', duration: 2.4, ease: 'easeInOut' } }),
+                    }}
+                    className="absolute -top-7 pointer-events-none select-none"
+                  >
+                    <span
+                      className={prefersReducedMotion ? 'text-[10px]' : 'text-[10px]'}
+                      style={{ fontFamily: 'monospace', letterSpacing: '-0.1em' }}
+                      aria-label="away"
+                    >
+                      zzz
+                    </span>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -864,6 +1143,34 @@ export function OfficeMap() {
           </motion.div>
         );
       })}
+    {/* D4 — Milestone confetti burst.
+          16 coloured dots fly outward from the office centre and fade,
+          one-shot, pointer-events-none.  No npm dep — pure CSS animation.
+          Reduced-motion: this section is conditionally rendered (skipped). */}
+      {confettiActive && !prefersReducedMotion && (
+        <div className="absolute inset-0 pointer-events-none z-40 overflow-hidden" aria-hidden>
+          {CONFETTI_COLORS.map((color, i) => (
+            <div
+              key={i}
+              className="confetti-particle"
+              style={{
+                backgroundColor: color,
+                '--tx': `${CONFETTI_TX[i]}%`,
+                '--ty': `${CONFETTI_TY[i]}%`,
+                animationDelay: `${CONFETTI_DELAYS[i]}ms`,
+                width: CONFETTI_SIZES[i],
+                height: CONFETTI_SIZES[i],
+                borderRadius: i % 3 === 0 ? '50%' : '15%',
+              } as React.CSSProperties}
+            />
+          ))}
+        </div>
+      )}
+      {/* D4 — Milestone flash (reduced-motion alternative): subtle amber
+          screen flash instead of confetti particles. */}
+      {confettiActive && prefersReducedMotion && (
+        <div className="absolute inset-0 pointer-events-none z-40 animate-confetti-flash" aria-hidden />
+      )}
     </div>
   );
 }
