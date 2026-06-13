@@ -59,7 +59,7 @@ export function HealthStrip() {
   const counts = aggregateHealthCounts(agents);
 
   // Priority order per spec
-  const buckets: HealthBucket[] = ['crash-loop', 'iteration-exhausted', 'stuck', 'healthy'];
+  const buckets: HealthBucket[] = ['crash-loop', 'iteration-exhausted', 'stuck', 'silent-done', 'healthy'];
 
   return (
     <div className="flex flex-wrap items-center gap-2">
