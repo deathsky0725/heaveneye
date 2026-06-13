@@ -1142,7 +1142,9 @@ export function OfficeMap() {
                         ? 'ติดอยู่'
                         : agent.healthFlag === 'crash-loop'
                         ? 'ล้มเหลวซ้ำ'
-                        : 'หมด iteration'}
+                        : agent.healthFlag === 'iteration-exhausted'
+                        ? 'หมด iteration'
+                        : 'silent-done'}
                     </div>
                     {/* Down-arrow caret */}
                     <div className="w-1.5 h-1.5 rotate-45 bg-orange-400/20 border-b border-r border-orange-400/40 -mt-0.5" />

@@ -42,8 +42,9 @@ export interface AgentSnapshot {
    *  'stuck' = no heartbeat / long elapsed with no completion.
    *  'crash-loop' = consecutive_failures threshold exceeded.
    *  'iteration-exhausted' = run timed out or gave_up.
+   *  Phase E7 — 'silent-done' = task completed without handoff comment.
    *  undefined = healthy / idle. */
-  healthFlag?: 'stuck' | 'crash-loop' | 'iteration-exhausted';
+  healthFlag?: 'stuck' | 'crash-loop' | 'iteration-exhausted' | 'silent-done';
 }
 
 export type ServerEvent =
