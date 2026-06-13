@@ -12,6 +12,7 @@ const BUCKET_TH: Record<HealthBucket, string> = {
   stuck:               'ติดอยู่',
   'crash-loop':        'ล้มเหลวซ้ำ',
   'iteration-exhausted': 'หมด iteration',
+  'silent-done':       'silent-done',
 };
 
 const BUCKET_DOT: Record<HealthBucket, string> = {
@@ -19,6 +20,7 @@ const BUCKET_DOT: Record<HealthBucket, string> = {
   stuck:              'bg-amber-400',
   'crash-loop':       'bg-rose-500',
   'iteration-exhausted': 'bg-amber-500',
+  'silent-done':      'bg-orange-400',
 };
 
 const BUCKET_PILL: Record<HealthBucket, string> = {
@@ -26,6 +28,7 @@ const BUCKET_PILL: Record<HealthBucket, string> = {
   stuck:              'bg-amber-400/10 text-amber-300 border-amber-400/25',
   'crash-loop':       'bg-rose-500/15 text-rose-300 border-rose-500/30',
   'iteration-exhausted': 'bg-amber-500/12 text-amber-300 border-amber-500/30',
+  'silent-done':      'bg-orange-400/12 text-orange-300 border-orange-400/30',
 };
 
 /** Chip for one health bucket. Hidden when count is 0. */

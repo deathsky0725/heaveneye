@@ -38,6 +38,52 @@ const DEFAULT_STUCK_CONFIG: StuckConfig = {
 const BOARDS_ROOT = join(HOME, '.hermes/kanban/boards');
 const POLL_INTERVAL_MS = 1_000;
 
+/** Phase E7 — agents currently flagged as silent-done (persists until they pick up new work) */
+const silentDoneAgents = new Set<AgentId>();
+
+/**
+ * Phase E7 — detect agents who completed tasks without a handoff comment.
+ * A "silent-done" task = status='done', completed recently, assignee is a known
+ * agent, AND there is no task_comment from anyone except possibly the assignee
+ * themselves (a self-comment is not a handoff).
+ *
+ * We track flagged agents in `silentDoneAgents` Set so we don't re-flag
+ * the same agent every poll cycle. The flag is cleared when the agent
+ * next receives a 'claimed' or 'spawned' event.
+ */
+function checkSilentDone(b: BoardState): void {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const windowSec = 10 * 60; // look back 10 minutes
+
+  // Find done tasks completed recently with no handoff comment
+  const silent = b.db.query(`
+    SELECT t.assignee, t.id AS task_id
+    FROM tasks t
+    WHERE t.status = 'done'
+      AND t.completed_at > ?
+      AND t.assignee NOT IN ('anmaioyi', 'ji-ziyue')
+      AND NOT EXISTS (
+          SELECT 1 FROM task_comments c
+          WHERE c.task_id = t.id
+            AND c.author NOT IN (t.assignee)
+      )
+  `).all(nowSec - windowSec) as { assignee: string; task_id: string }[];
+
+  for (const row of silent) {
+    if (!isKnownAgent(row.assignee)) continue;
+    silentDoneAgents.add(row.assignee as AgentId);
+    state.patchHealthFlag(row.assignee as AgentId, 'silent-done');
+  }
+}
+
+/** Clear silent-done flag when agent picks up new work */
+function clearSilentDone(agent: AgentId): void {
+  if (silentDoneAgents.has(agent)) {
+    silentDoneAgents.delete(agent);
+    state.patchHealthFlag(agent, undefined);
+  }
+}
+
 interface KanbanEventRow {
   id: number;
   task_id: string;
@@ -107,6 +153,7 @@ function handleEvent(row: KanbanEventRow, boardSlug: string, db: Database): void
   switch (row.kind) {
     case 'claimed':
       recordAgentEvent(agent);
+      clearSilentDone(agent);
       state.onKanbanActive(agent, boardSlug, row.task_id, taskTitle);
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'claimed', task_id: row.task_id, task_title: taskTitle, payload });
       dispatchNotification(db, row.task_id, taskTitle, 'claimed', agent);
@@ -118,6 +165,7 @@ function handleEvent(row: KanbanEventRow, boardSlug: string, db: Database): void
 
     case 'spawned':
       recordAgentEvent(agent);
+      clearSilentDone(agent);
       state.onHermesToolUse(agent, 'spawn');
       state.onKanbanEvent({ ts: new Date().toISOString(), agent, kind: 'spawned', task_id: row.task_id, task_title: taskTitle, payload });
       return;
@@ -366,6 +414,9 @@ function pollBoard(b: BoardState, config?: StuckConfig): void {
 
   // Phase E6 — stuck-worker detector: evaluate health flags from kanban run data
   checkStuckWorkers(b, config);
+
+  // Phase E7 — silent-done detector: detect agents who self-completed without handoff comment
+  checkSilentDone(b);
 }
 
 export async function startKanbanWatcher(opts: { replayHistory?: boolean } = {}) {

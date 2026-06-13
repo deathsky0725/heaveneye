@@ -252,7 +252,7 @@ if (process.env.NODE_ENV !== 'production') {
   //   curl -X POST :7878/api/test/status -d '{"agent":"yanxin","status":"thinking"}'
   app.post('/api/test/status', async (c) => {
     const body = await c.req.json().catch(() => ({}));
-    const { agent, status, taskTitle, idleMinutes, healthFlag } = body as { agent?: AgentId; status?: AgentStatus; taskTitle?: string; idleMinutes?: number; healthFlag?: 'stuck' | 'crash-loop' | 'iteration-exhausted' };
+    const { agent, status, taskTitle, idleMinutes, healthFlag } = body as { agent?: AgentId; status?: AgentStatus; taskTitle?: string; idleMinutes?: number; healthFlag?: 'stuck' | 'crash-loop' | 'iteration-exhausted' | 'silent-done' };
     if (!agent || !status) return c.json({ error: 'agent and status required' }, 400);
     state.debugSetStatus(agent, status, taskTitle, idleMinutes, healthFlag);
     return c.json({ ok: true, agent, status, idleMinutes, healthFlag });

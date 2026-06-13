@@ -28,8 +28,9 @@ export interface AgentSnapshot {
    *  'stuck' = no heartbeat / long elapsed with no completion.
    *  'crash-loop' = consecutive_failures threshold exceeded.
    *  'iteration-exhausted' = run timed out or gave_up.
+   *  Phase E7 — 'silent-done' = task completed without handoff comment.
    *  undefined = healthy / idle. */
-  healthFlag?: 'stuck' | 'crash-loop' | 'iteration-exhausted';
+  healthFlag?: 'stuck' | 'crash-loop' | 'iteration-exhausted' | 'silent-done';
 }
 
 export interface KanbanEventEntry {
@@ -188,22 +189,24 @@ export interface CrashNotificationEntry {
 }
 
 // ── Team Health Strip (Phase E9) ───────────────────────────────────────────
-export type HealthBucket = 'healthy' | 'stuck' | 'crash-loop' | 'iteration-exhausted';
+export type HealthBucket = 'healthy' | 'stuck' | 'crash-loop' | 'iteration-exhausted' | 'silent-done';
 
 export interface HealthCounts {
   healthy: number;
   stuck: number;
   'crash-loop': number;
   'iteration-exhausted': number;
+  'silent-done': number;
 }
 
 /** Aggregate agent snapshots into bucket counts. */
 export function aggregateHealthCounts(agents: AgentSnapshot[]): HealthCounts {
-  const counts: HealthCounts = { healthy: 0, stuck: 0, 'crash-loop': 0, 'iteration-exhausted': 0 };
+  const counts: HealthCounts = { healthy: 0, stuck: 0, 'crash-loop': 0, 'iteration-exhausted': 0, 'silent-done': 0 };
   for (const a of agents) {
     if (a.healthFlag === 'stuck') counts.stuck++;
     else if (a.healthFlag === 'crash-loop') counts['crash-loop']++;
     else if (a.healthFlag === 'iteration-exhausted') counts['iteration-exhausted']++;
+    else if (a.healthFlag === 'silent-done') counts['silent-done']++;
     else counts.healthy++;
   }
   return counts;
