@@ -9,6 +9,7 @@ import { SystemHealth } from './components/SystemHealth';
 import { CrossBoardDashboard } from './components/CrossBoardDashboard';
 import { ReportViewer } from './components/ReportViewer';
 import { ProviderPanel } from './components/ProviderPanel';
+import { HealthStrip } from './components/HealthStrip';
 import { ToastContainer } from './components/Toast';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ExportPanel } from './components/ExportPanel';
@@ -123,6 +124,11 @@ export default function App() {
         {/* Gateway health strip */}
         <div className="px-6 mb-4">
           <SystemHealth />
+        </div>
+
+        {/* Team health summary strip (Phase E9) */}
+        <div className="px-6 mb-4">
+          <HealthStrip />
         </div>
 
         {/* Provider rollup */}

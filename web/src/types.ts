@@ -186,3 +186,25 @@ export interface CrashNotificationEntry {
   title: string;
   body: string;
 }
+
+// ── Team Health Strip (Phase E9) ───────────────────────────────────────────
+export type HealthBucket = 'healthy' | 'stuck' | 'crash-loop' | 'iteration-exhausted';
+
+export interface HealthCounts {
+  healthy: number;
+  stuck: number;
+  'crash-loop': number;
+  'iteration-exhausted': number;
+}
+
+/** Aggregate agent snapshots into bucket counts. */
+export function aggregateHealthCounts(agents: AgentSnapshot[]): HealthCounts {
+  const counts: HealthCounts = { healthy: 0, stuck: 0, 'crash-loop': 0, 'iteration-exhausted': 0 };
+  for (const a of agents) {
+    if (a.healthFlag === 'stuck') counts.stuck++;
+    else if (a.healthFlag === 'crash-loop') counts['crash-loop']++;
+    else if (a.healthFlag === 'iteration-exhausted') counts['iteration-exhausted']++;
+    else counts.healthy++;
+  }
+  return counts;
+}
