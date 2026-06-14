@@ -7,6 +7,24 @@ interface CommandPanelProps {
   onClose: () => void;
 }
 
+// Quick-action command templates
+const QUICK_ACTIONS = [
+  { label: 'Phase A start', command: 'Phase A start' },
+  { label: 'Phase B start', command: 'Phase B start' },
+  { label: 'review', command: 'review' },
+  { label: 'status check', command: 'status check' },
+];
+
+async function postCommand(text: string): Promise<void> {
+  const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
+  const res = await fetch(`${base}/api/command`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
 export function CommandPanel({ onClose }: CommandPanelProps) {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -56,6 +74,16 @@ export function CommandPanel({ onClose }: CommandPanelProps) {
     }
   };
 
+  const handleQuickAction = async (command: string) => {
+    try {
+      await postCommand(command);
+      useToastStore.getState().addToast(`ส่ง "${command}" แล้ว`, 'success');
+      onClose();
+    } catch {
+      useToastStore.getState().addToast('ส่งคำสั่งไม่สำเร็จ', 'error');
+    }
+  };
+
   return prefersReducedMotion ? (
     // Static — no animation
     <div
@@ -70,6 +98,18 @@ export function CommandPanel({ onClose }: CommandPanelProps) {
             <span className="text-slate-100 text-sm font-medium">Bridge Command</span>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-200 transition-colors text-lg leading-none">×</button>
+        </div>
+        {/* Quick-action pills */}
+        <div className="flex flex-wrap gap-2 px-5 pt-4">
+          {QUICK_ACTIONS.map(({ label, command }) => (
+            <button
+              key={command}
+              onClick={() => handleQuickAction(command)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-slate-100 transition-colors cursor-pointer"
+            >
+              {label}
+            </button>
+          ))}
         </div>
         <form onSubmit={handleSubmit} className="flex items-center gap-2 px-5 py-4">
           <input
@@ -132,6 +172,19 @@ export function CommandPanel({ onClose }: CommandPanelProps) {
           >
             ×
           </button>
+        </div>
+
+        {/* Quick-action pills */}
+        <div className="flex flex-wrap gap-2 px-5 pt-4">
+          {QUICK_ACTIONS.map(({ label, command }) => (
+            <button
+              key={command}
+              onClick={() => handleQuickAction(command)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-slate-100 transition-colors cursor-pointer"
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         {/* Form */}
