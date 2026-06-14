@@ -1,5 +1,7 @@
 import { useEffect, lazy, Suspense, useState } from 'react';
+import { AnimatePresence } from 'motion/react';
 import { connectStream, startUsage5hPolling, fetchInitialInbox, fetchInitialEvents, fetchInitialHealth, useStore } from './store';
+import { ChatPanel } from './components/ChatPanel';
 import { useThemeStore, applyTheme } from './store/themeStore';
 import { OfficeMap } from './components/OfficeMap';
 import { UsagePanel } from './components/UsagePanel';
@@ -14,6 +16,8 @@ import { ToastContainer } from './components/Toast';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ExportPanel } from './components/ExportPanel';
 import { CommandPalette } from './components/CommandPalette';
+import { CommandPanel } from './components/CommandPanel';
+import { VoiceTTS } from './components/VoiceTTS';
 import { AlertSettings } from './components/AlertSettings';
 import type { AgentId, AgentSnapshot, CrashNotificationEntry } from './types';
 
@@ -30,6 +34,8 @@ export default function App() {
   const currentTheme = useThemeStore((s) => s.currentTheme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [commandPanelOpen, setCommandPanelOpen] = useState(false);
 
   useEffect(() => {
     connectStream();
@@ -118,6 +124,21 @@ export default function App() {
             >
               🔔 Alerts
             </button>
+            <button
+              onClick={() => setChatOpen(true)}
+              className="text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
+              title="Chat"
+            >
+              💬 Chat
+            </button>
+            <button
+              onClick={() => setCommandPanelOpen(true)}
+              className="text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
+              title="Bridge Command"
+            >
+              🌉 Bridge
+            </button>
+            <VoiceTTS />
           </div>
         </header>
 
@@ -167,6 +188,14 @@ export default function App() {
       {alertSettingsOpen && (
         <AlertSettings onClose={() => setAlertSettingsOpen(false)} />
       )}
+      {chatOpen && (
+        <ChatPanel onClose={() => setChatOpen(false)} />
+      )}
+      <AnimatePresence>
+        {commandPanelOpen && (
+          <CommandPanel onClose={() => setCommandPanelOpen(false)} />
+        )}
+      </AnimatePresence>
     </>
   );
 }

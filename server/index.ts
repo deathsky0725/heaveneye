@@ -20,6 +20,7 @@ import { gatewayStart, gatewayStop } from './lib/gatewayControl.js';
 import { getAgentHealthScore } from './lib/agentHealth.ts';
 import { readAlertConfig, writeAlertConfig, type AlertConfig } from './lib/alertConfig.ts';
 import { computeCost, priceForModel } from './lib/costCalculator.js';
+import { chatCompletion, buildSystemPrompt, hasTeamCommandIntent, buildEpicDraft } from './lib/llm.ts';
 import exportApp from './routes/export.ts';
 
 const app = new Hono();
@@ -209,6 +210,63 @@ app.get('/api/inbox', async (c) => {
 app.get('/api/events', (c) => {
   const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
   return c.json({ events: state.getKanbanEvents(limit) });
+});
+
+// POST /api/chat — LLM chat with board context (Thai responses, team-command intent detection)
+app.post('/api/chat', async (c) => {
+  const body = await c.req.json().catch(() => null) as { message?: string; history?: Array<{ role: string; content: string }> } | null;
+  if (!body || typeof body.message !== 'string' || !body.message.trim()) {
+    return c.json({ error: 'message is required' }, 400);
+  }
+
+  // Gather board context
+  const agents = state.snapshot();
+  const events = state.getKanbanEvents(20);
+
+  const boardAgents = agents
+    .map((a) => `• ${a.name} (${a.role}) — ${a.status}${a.currentTask ? ` | ทำงาน: ${a.currentTask.title}` : ''}`)
+    .join('\n');
+
+  const recentEvents = events
+    .slice(0, 10)
+    .map((e) => `• [${e.ts}] ${e.agent}: ${e.kind} — ${e.task_title ?? e.task_id}`)
+    .join('\n') || '(ไม่มีเหตุการณ์ล่าสุด)';
+
+  const systemPrompt = buildSystemPrompt(boardAgents, recentEvents);
+
+  // Build messages: system + history + new user message
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: systemPrompt },
+  ];
+
+  // Append history (if any)
+  if (body.history && body.history.length > 0) {
+    for (const h of body.history) {
+      if (h.role === 'user' || h.role === 'assistant') {
+        messages.push({ role: h.role, content: h.content });
+      }
+    }
+  }
+
+  // Append current user message
+  messages.push({ role: 'user', content: body.message });
+
+  // Check for team-command intent
+  const isTeamCommand = hasTeamCommandIntent(body.message);
+
+  try {
+    const reply = await chatCompletion({ messages });
+
+    // If team-command intent detected, append epic draft suggestion
+    const withDraft = isTeamCommand
+      ? reply + '\n\n' + buildEpicDraft(body.message, boardAgents)
+      : reply;
+
+    return c.json({ reply: withDraft, isTeamCommand });
+  } catch (err) {
+    console.error('[/api/chat] LLM error:', err);
+    return c.json({ error: 'LLM call failed', detail: String(err) }, 500);
+  }
 });
 
 // Phase C — dev-only handoff verifier. Calls the same resolver the watcher
@@ -428,6 +486,19 @@ app.post('/api/crash-notification/config', async (c) => {
     }
   }
   return c.json({ ok: true, config: getCrashNotificationConfig() });
+});
+
+// POST /api/command — BRIDGE epic command: append kind:epic line to anmaioyi-inbox.jsonl
+app.post('/api/command', async (c) => {
+  const { text } = await c.req.json<{ text?: unknown }>();
+  if (typeof text !== 'string') {
+    return c.json({ error: 'text is required and must be a string' }, 400);
+  }
+  const INBOX = join(HOME, 'Agentic-OS/Context/anmaioyi-inbox.jsonl');
+  const line = JSON.stringify({ kind: 'epic', from: 'bridge', text }) + '\n';
+  const { appendFile } = await import('node:fs/promises');
+  await appendFile(INBOX, line, 'utf8');
+  return c.json({ ok: true, epic_id: 'draft' });
 });
 
 // POST /api/crash-notification/test — send a test notification (does not require a real dead event)
