@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { useToastStore } from '../store/toastStore';
+import { VoiceSTT } from './VoiceSTT';
 
 interface CommandPanelProps {
   onClose: () => void;
@@ -70,7 +71,7 @@ export function CommandPanel({ onClose }: CommandPanelProps) {
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-200 transition-colors text-lg leading-none">×</button>
         </div>
-        <form onSubmit={handleSubmit} className="flex items-center gap-3 px-5 py-4">
+        <form onSubmit={handleSubmit} className="flex items-center gap-2 px-5 py-4">
           <input
             ref={inputRef}
             type="text"
@@ -79,6 +80,10 @@ export function CommandPanel({ onClose }: CommandPanelProps) {
             placeholder="พิมพ์คำสั่ง…"
             disabled={loading}
             className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-slate-100 placeholder-slate-500 text-sm outline-none focus:border-white/25 transition-colors disabled:opacity-50"
+          />
+          <VoiceSTT
+            onResult={(t) => setText((prev) => (prev ? prev + ' ' + t : t))}
+            className="text-base"
           />
           <button
             type="submit"
@@ -130,7 +135,7 @@ export function CommandPanel({ onClose }: CommandPanelProps) {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="flex items-center gap-3 px-5 py-4">
+        <form onSubmit={handleSubmit} className="flex items-center gap-2 px-5 py-4">
           <input
             ref={inputRef}
             type="text"
@@ -139,6 +144,10 @@ export function CommandPanel({ onClose }: CommandPanelProps) {
             placeholder="พิมพ์คำสั่ง…"
             disabled={loading}
             className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-slate-100 placeholder-slate-500 text-sm outline-none focus:border-white/25 transition-colors disabled:opacity-50"
+          />
+          <VoiceSTT
+            onResult={(t) => setText((prev) => (prev ? prev + ' ' + t : t))}
+            className="text-base"
           />
           <button
             type="submit"

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
+import { VoiceSTT } from './VoiceSTT';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -189,6 +190,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 className="flex-1 bg-slate-800/80 border border-slate-600/60 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/30"
                 style={{ maxHeight: '120px' }}
                 disabled={loading}
+              />
+              <VoiceSTT
+                onResult={(t) => setInput((prev) => (prev ? prev + ' ' + t : t))}
+                className="text-base"
               />
               <button
                 onClick={sendMessage}
