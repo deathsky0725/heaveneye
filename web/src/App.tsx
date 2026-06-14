@@ -19,6 +19,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { CommandPanel } from './components/CommandPanel';
 import { VoiceTTS } from './components/VoiceTTS';
 import { AlertSettings } from './components/AlertSettings';
+import { MissionControlPanel } from './components/MissionControlPanel';
 import type { AgentId, AgentSnapshot, CrashNotificationEntry } from './types';
 
 // DetailPanel is lazy-loaded — only opened on click
@@ -150,6 +151,11 @@ export default function App() {
         {/* Team health summary strip (Phase E9) */}
         <div className="px-6 mb-4">
           <HealthStrip />
+        </div>
+
+        {/* MissionControl panel — quota state + epic pipeline + parked cards + activity */}
+        <div className="px-6 mb-4">
+          <MissionControlPanel />
         </div>
 
         {/* Provider rollup */}
