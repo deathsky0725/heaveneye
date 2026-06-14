@@ -232,7 +232,30 @@ app.post('/api/chat', async (c) => {
     .map((e) => `• [${e.ts}] ${e.agent}: ${e.kind} — ${e.task_title ?? e.task_id}`)
     .join('\n') || '(ไม่มีเหตุการณ์ล่าสุด)';
 
-  const systemPrompt = buildSystemPrompt(boardAgents, recentEvents);
+  // Build per-agent cost + history context (same logic as /api/cost)
+  const agentCostEntries: string[] = [];
+  for (const id of AGENT_IDS) {
+    const snap = agents.find((a) => a.id === id);
+    if (!snap) continue;
+    const model = snap.currentModel ?? 'unknown';
+    const todayTokens = snap.tokensToday;
+    const buckets7d = state.getUsage7d(id);
+    let input7d = 0, output7d = 0, cacheRead7d = 0;
+    for (const b of buckets7d) {
+      input7d += b.input;
+      output7d += b.output;
+      cacheRead7d += b.cacheRead;
+    }
+    const costTodayAgent = computeCost(model, todayTokens);
+    const cost7dAgent = computeCost(model, { input: input7d, output: output7d, cacheRead: cacheRead7d, cacheCreate: 0 });
+    const totalTokensToday = todayTokens.input + todayTokens.output;
+    agentCostEntries.push(
+      `• ${snap.name}: วันนี้ใช้ ${totalTokensToday.toLocaleString()} tokens (in: ${todayTokens.input.toLocaleString()}, out: ${todayTokens.output.toLocaleString()}) | ค่าใช้จ่ายวันนี้ $${costTodayAgent.toFixed(4)} | 7 วัน $${cost7dAgent.toFixed(4)} | model: ${model}`
+    );
+  }
+  const agentCostContext = agentCostEntries.join('\n') || '(ไม่มีข้อมูลค่าใช้จ่าย)';
+
+  const systemPrompt = buildSystemPrompt(boardAgents, recentEvents, agentCostContext);
 
   // Build messages: system + history + new user message
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [

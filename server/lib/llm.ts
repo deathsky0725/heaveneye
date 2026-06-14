@@ -16,6 +16,7 @@ export interface ChatOptions {
   extra?: {
     boardAgents: string;
     recentEvents: string;
+    agentCostContext: string;
   };
 }
 
@@ -126,13 +127,16 @@ export async function chatCompletion(options: ChatOptions): Promise<string> {
 }
 
 /**
- * Build a system prompt that includes current board context.
+ * Build a system prompt that includes current board context + per-agent cost.
  */
-export function buildSystemPrompt(boardAgents: string, recentEvents: string): string {
+export function buildSystemPrompt(boardAgents: string, recentEvents: string, agentCostContext: string): string {
   return `คุณคือผู้ช่วย AI ของ Heaveneye Dashboard — ระบบ monitor สำหรับทีม Hermes agents
 
 ## ข้อมูลทีมปัจจุบัน
 ${boardAgents}
+
+## ค่าใช้จ่ายและการใช้งานวันนี้ (per-agent)
+${agentCostContext}
 
 ## เหตุการณ์ล่าสุดจาก Kanban board
 ${recentEvents}
