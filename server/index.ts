@@ -292,6 +292,107 @@ app.post('/api/chat', async (c) => {
   }
 });
 
+// ---- MissionControl aggregate API (Phase I1) ----
+// GET /api/autopilot — aggregates quotaState + epicPipeline + parkedCards + recentActivity
+app.get('/api/autopilot', async (c) => {
+  try {
+    const { readFile } = await import('node:fs/promises');
+    const { existsSync } = await import('node:fs');
+
+    // 1. quotaState — from heaveneye_autopilot.json
+    let quotaState: Record<string, unknown> = {};
+    const autopilotPath = join(HOME, '.hermes', 'state', 'heaveneye_autopilot.json');
+    if (existsSync(autopilotPath)) {
+      try {
+        quotaState = JSON.parse(await readFile(autopilotPath, 'utf8'));
+      } catch {
+        // use empty on parse error
+      }
+    }
+
+    // 2. epicPipeline — from anmaioyi inbox + outbox JSONL
+    const inboxPath = join(HOME, 'Agentic-OS', 'Context', 'anmaioyi-inbox.jsonl');
+    const outboxPath = join(HOME, 'Agentic-OS', 'Context', 'anmaioyi-outbox.jsonl');
+    const epicMap: Record<string, { id: string; project: string; stage: string; cards: { id: string; title: string }[] }> = {};
+
+    for (const path of [inboxPath, outboxPath]) {
+      if (existsSync(path)) {
+        try {
+          const content = await readFile(path, 'utf8');
+          const lines = content.split('\n').filter((l) => l.trim());
+          for (const line of lines) {
+            try {
+              const entry = JSON.parse(line);
+              if (entry.kind === 'epic' || entry.kind === 'epic_ack') {
+                const epicId = entry.project ?? entry.epic ?? 'unknown';
+                if (!epicMap[epicId]) {
+                  epicMap[epicId] = { id: epicId, project: epicId, stage: 'intake', cards: [] };
+                }
+                if (entry.kind === 'epic_ack') {
+                  // Advance stage: intake → card_plan → ack → cards → done
+                  const stageOrder = ['intake', 'card_plan', 'ack', 'cards', 'done'];
+                  const currentIdx = stageOrder.indexOf(epicMap[epicId].stage);
+                  if (currentIdx < stageOrder.length - 1) {
+                    epicMap[epicId].stage = stageOrder[currentIdx + 1]!;
+                  }
+                }
+                if (entry.phase) epicMap[epicId].stage = entry.phase;
+                if (entry.topic) {
+                  epicMap[epicId].cards.push({ id: epicId, title: entry.topic });
+                }
+              }
+            } catch {
+              // skip malformed lines
+            }
+          }
+        } catch {
+          // skip unreadable files
+        }
+      }
+    }
+    const epicPipeline = Object.values(epicMap);
+
+    // 3. parkedCards — scan kanban boards for blocked tasks with [PARKED] comment
+    const parkedCards: { id: string; title: string; reason: string }[] = [];
+    const boardsRoot = join(HOME, '.hermes', 'kanban', 'boards');
+    if (existsSync(boardsRoot)) {
+      const { readdirSync } = require('node:fs');
+      for (const entry of readdirSync(boardsRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith('_')) continue;
+        const dbPath = join(boardsRoot, entry.name, 'kanban.db');
+        if (!existsSync(dbPath)) continue;
+        try {
+          const db = new (require('bun:sqlite').Database)(dbPath, { readonly: true });
+          const parked = db.query(`
+            SELECT t.id, t.title, c.body as reason
+            FROM tasks t
+            JOIN task_comments c ON c.task_id = t.id
+            WHERE t.status = 'blocked'
+              AND c.body LIKE '%[PARKED]%'
+            GROUP BY t.id
+          `).all() as { id: string; title: string; reason: string }[];
+          db.close();
+          for (const row of parked) {
+            // Extract [PARKED] reason text
+            const match = row.reason.match(/\[PARKED\]\s*(.*)/);
+            parkedCards.push({ id: row.id, title: row.title, reason: match?.[1] ?? '' });
+          }
+        } catch {
+          // ignore individual board errors
+        }
+      }
+    }
+
+    // 4. recentActivity — last 20 kanban events from state engine
+    const recentActivity = state.getKanbanEvents(20);
+
+    return c.json({ quotaState, epicPipeline, parkedCards, recentActivity });
+  } catch (err) {
+    console.error('[/api/autopilot]', err);
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
 // Phase C — dev-only handoff verifier. Calls the same resolver the watcher
 // would use, then emits a synthetic handoff event into the kanban buffer so
 // the frontend (or curl) can see the resulting `to_agent` field. Gated by
