@@ -36,6 +36,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "entitlements": "./heaveneye.entitlements",
+      "Info": {
+        "NSMicrophoneUsageDescription": "ใช้ไมค์สำหรับสิ่งที่ต้องทำงานด้วยเสียงพูดไทย"
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }
