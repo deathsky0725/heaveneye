@@ -22,14 +22,8 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: TypeScript check (root)
-        run: bun tsc --noEmit
-
-      - name: TypeScript check (web)
-        run: bun tsc --noEmit --project web/tsconfig.json
-
-      - name: TypeScript check (server)
-        run: bun tsc --noEmit --project server/tsconfig.json 2>/dev/null || true
+      - name: TypeScript check
+        run: bun tsc --noEmit   # single root tsconfig.json covers web/ + server/
 
   build:
     name: Build
@@ -51,8 +45,8 @@ jobs:
 
       - name: Verify dist output
         run: |
-          test -f web/dist/index.html || exit 1
-          test -d web/dist/assets || exit 1
+          test -f dist/index.html || exit 1
+          test -d dist/assets || exit 1
 
   test:
     name: Tests
