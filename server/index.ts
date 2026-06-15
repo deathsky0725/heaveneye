@@ -348,6 +348,7 @@ app.post('/api/chat', async (c) => {
 
   // Build per-agent cost + history context (same logic as /api/cost)
   const agentCostEntries: string[] = [];
+  const weeklyBurnRanking: { id: AgentId; name: string; cost7d: number }[] = [];
   for (const id of AGENT_IDS) {
     const snap = agents.find((a) => a.id === id);
     if (!snap) continue;
@@ -366,10 +367,35 @@ app.post('/api/chat', async (c) => {
     agentCostEntries.push(
       `• ${snap.name}: วันนี้ใช้ ${totalTokensToday.toLocaleString()} tokens (in: ${todayTokens.input.toLocaleString()}, out: ${todayTokens.output.toLocaleString()}) | ค่าใช้จ่ายวันนี้ $${costTodayAgent.toFixed(4)} | 7 วัน $${cost7dAgent.toFixed(4)} | model: ${model}`
     );
+    weeklyBurnRanking.push({ id, name: snap.name, cost7d: cost7dAgent });
   }
   const agentCostContext = agentCostEntries.join('\n') || '(ไม่มีข้อมูลค่าใช้จ่าย)';
 
-  const systemPrompt = buildSystemPrompt(boardAgents, recentEvents, agentCostContext);
+  // Build weekly burn ranking (highest spender first)
+  const burnRank = [...weeklyBurnRanking]
+    .sort((a, b) => b.cost7d - a.cost7d)
+    .map((e, i) => `${i + 1}. ${e.name}: $${e.cost7d.toFixed(4)}`)
+    .join('\n');
+
+  // Build per-agent recent session history
+  const agentHistoryEntries: string[] = [];
+  for (const id of AGENT_IDS) {
+    const snap = agents.find((a) => a.id === id);
+    if (!snap) continue;
+    const sessions = state.getAgentSessions(id, 3);
+    if (sessions.length === 0) continue;
+    const lines = sessions.map((s) => {
+      const dur = s.durationMs > 0 ? `${Math.round(s.durationMs / 60000)} นาที` : 'active';
+      const tokens = s.totalTokens > 0 ? `, ${s.totalTokens.toLocaleString()} tokens` : '';
+      const task = s.taskTitle ? ` [${s.taskTitle}]` : '';
+      const ended = s.status === 'ended' ? ' (จบ)' : ' (กำลังทำ)';
+      return `  - ${s.status === 'active' ? '🟢' : '⚪'} ${dur}${ended}${tokens}${task}`;
+    }).join('\n');
+    agentHistoryEntries.push(`• ${snap.name}:\n${lines}`);
+  }
+  const agentHistoryContext = agentHistoryEntries.join('\n') || '(ไม่มีข้อมูลประวัติ)';
+
+  const systemPrompt = buildSystemPrompt(boardAgents, recentEvents, agentCostContext, burnRank, agentHistoryContext);
 
   // Build messages: system + history + new user message
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [

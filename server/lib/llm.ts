@@ -127,16 +127,29 @@ export async function chatCompletion(options: ChatOptions): Promise<string> {
 }
 
 /**
- * Build a system prompt that includes current board context + per-agent cost.
+ * Build a system prompt that includes current board context + per-agent cost
+ * + per-agent work history + weekly burn ranking.
  */
-export function buildSystemPrompt(boardAgents: string, recentEvents: string, agentCostContext: string): string {
+export function buildSystemPrompt(
+  boardAgents: string,
+  recentEvents: string,
+  agentCostContext: string,
+  burnRank: string = '',
+  agentHistoryContext: string = '',
+): string {
+  const burnSection = burnRank
+    ? `\n## อันดับค่าใช้จ่าย 7 วัน (สูงสุด → ต่ำสุด)\n${burnRank}`
+    : '';
+  const historySection = agentHistoryContext
+    ? `\n## ประวัติการทำงานล่าสุดของแต่ละ agent (session/task)\n${agentHistoryContext}`
+    : '';
   return `คุณคือผู้ช่วย AI ของ Heaveneye Dashboard — ระบบ monitor สำหรับทีม Hermes agents
 
 ## ข้อมูลทีมปัจจุบัน
 ${boardAgents}
 
 ## ค่าใช้จ่ายและการใช้งานวันนี้ (per-agent)
-${agentCostContext}
+${agentCostContext}${burnSection}${historySection}
 
 ## เหตุการณ์ล่าสุดจาก Kanban board
 ${recentEvents}
@@ -146,6 +159,7 @@ ${recentEvents}
 - ถ้าข้อความของผู้ใช้มี intent ที่เป็น "team command" (เช่น สั่งให้ agent ทำงาน, สร้าง task ใหม่, ปรับ priority, หรือ dispatch งาน) → ในคำตอบให้แนะนำ epic draft ที่เป็น structure ของ task ที่ควรถูกสร้าง แต่ **ไม่ auto-dispatch** — มีแค่ suggestion พร้อมระบุว่า "ต้องให้ anmaioyi หรือ ji-ziyue approve ก่อน"
 - ถ้าไม่มี intent เป็น command → ตอบ conversationally ตามปกติ
 - กรณีถามเรื่อง status ของ agent/task ให้อ้างอิงจากข้อมูลทีมด้านบน
+- กรณีถามเรื่อง "ใครเผาค่าใช้จ่ายมากที่สุด" หรือ "ค่าใช้จ่ายสัปดาห์นี้" → ใช้ข้อมูลอันดับค่าใช้จ่าย 7 วันด้านบน
 
 ## ห้าม
 - ไม่ตอบในภาษาอังกฤษ (ยกเว้นชื่อ model/tool ที่เป็นภาษาอังกฤษ)
