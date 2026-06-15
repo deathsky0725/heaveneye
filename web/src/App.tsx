@@ -24,6 +24,7 @@ import type { AgentId, AgentSnapshot, CrashNotificationEntry } from './types';
 
 // DetailPanel is lazy-loaded — only opened on click
 const LazyDetailPanel = lazy(() => import('./components/DetailPanel').then((m) => ({ default: m.DetailPanel })));
+const LazyQuotaPanel = lazy(() => import('./components/QuotaPanel').then((m) => ({ default: m.QuotaPanel })));
 
 export default function App() {
   const agents = useStore((s) => s.agents);
@@ -151,6 +152,11 @@ export default function App() {
         {/* Team health summary strip (Phase E9) */}
         <div className="px-6 mb-4">
           <HealthStrip />
+        </div>
+
+        {/* Quota gauges — 5h cap % + weekly cap % + reset countdown + burn rate */}
+        <div className="px-6 mb-4">
+          <LazyQuotaPanel />
         </div>
 
         {/* MissionControl panel — quota state + epic pipeline + parked cards + activity */}
