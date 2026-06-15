@@ -19,6 +19,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { CommandPanel } from './components/CommandPanel';
 import { VoiceTTS } from './components/VoiceTTS';
 import { AlertSettings } from './components/AlertSettings';
+import { ProactiveHintBanner } from './components/ProactiveHintBanner';
 import { MissionControlPanel } from './components/MissionControlPanel';
 import type { AgentId, AgentSnapshot, CrashNotificationEntry } from './types';
 
@@ -143,6 +144,9 @@ export default function App() {
             <VoiceTTS />
           </div>
         </header>
+
+        {/* Proactive hint banners — surface alert threshold events */}
+        <ProactiveHintBanner />
 
         {/* Gateway health strip */}
         <div className="px-6 mb-4">
