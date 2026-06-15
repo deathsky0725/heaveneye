@@ -38,6 +38,120 @@ app.get('/api/providers', (c) => c.json({ providers: state.getProviders() }));
 
 app.get('/api/usage/5h', (c) => c.json({ usage: state.getUsage5h() }));
 
+// ---- Quota aggregate API (Phase G1) ----
+// GET /api/quota — 5h cap % + weekly cap % + reset countdown + burn rate + per-agent tokens
+// Data sources: getUsage5h() (window) + getUsage7d() (weekly) + getProviders() + heaveneye_autopilot.json
+app.get('/api/quota', (c) => {
+  // --- 5h window ---
+  const usage5h = state.getUsage5h();
+  let totalTokens5h = 0;
+  let windowStartedAt: number | null = null;
+  let nextResetAt: number | null = null;
+
+  for (const u of usage5h) {
+    const sum = u.input + u.output + u.cacheRead + u.cacheCreate;
+    totalTokens5h += sum;
+    if (u.windowStartedAt != null) {
+      if (windowStartedAt === null || u.windowStartedAt < windowStartedAt) {
+        windowStartedAt = u.windowStartedAt;
+        nextResetAt = u.nextResetAt;
+      }
+    }
+  }
+
+  // MiniMax 5h hard cap (conservative — 500k tokens/h * 5h = 2.5M)
+  const CAP_5H = 2_500_000;
+  const cap5hPercent = Math.min((totalTokens5h / CAP_5H) * 100, 100);
+  const resetCountdownMs = nextResetAt ? Math.max(0, nextResetAt - Date.now()) : null;
+
+  // --- Burn rate: tokens/hr from 5h window ---
+  let burnRateTph = 0;
+  if (windowStartedAt !== null) {
+    const elapsedMs = Date.now() - windowStartedAt;
+    const elapsedHours = elapsedMs / (1000 * 60 * 60);
+    if (elapsedHours > 0) {
+      burnRateTph = totalTokens5h / elapsedHours;
+    }
+  }
+
+  // --- Weekly cap % ---
+  // Aggregate last-7-days tokens across all agents (all buckets summed)
+  let totalTokens7d = 0;
+  for (const id of AGENT_IDS) {
+    const buckets = state.getUsage7d(id);
+    for (const b of buckets) {
+      totalTokens7d += b.total;
+    }
+  }
+  // Weekly cap: 10M tokens/week (per MiniMax plan)
+  const CAP_WEEKLY = 10_000_000;
+  const capWeeklyPercent = Math.min((totalTokens7d / CAP_WEEKLY) * 100, 100);
+
+  // --- Per-agent token attribution ---
+  const agents = state.snapshot();
+  const providers = state.getProviders();
+  const agentAttribution: Array<{
+    agent: AgentId;
+    name: string;
+    provider: string;
+    tokensToday: number;
+    tokens5h: number;
+    costToday: number;
+  }> = [];
+
+  for (const id of AGENT_IDS) {
+    const snap = agents.find((a) => a.id === id);
+    if (!snap) continue;
+    const model = snap.currentModel ?? 'unknown';
+    const todayTokens = snap.tokensToday;
+    const tokensToday = todayTokens.input + todayTokens.output;
+
+    // 5h tokens for this agent
+    const agent5h = usage5h.find((u) => u.agent === id);
+    const tokens5h = agent5h
+      ? agent5h.input + agent5h.output + agent5h.cacheRead + agent5h.cacheCreate
+      : 0;
+
+    // cost today
+    const { computeCost } = require('./lib/costCalculator.js');
+    const costToday = computeCost(model, todayTokens);
+
+    // provider from getProviders
+    const prov = providers.find((p) => p.agents.includes(id));
+    const provider = prov?.provider ?? 'unknown';
+
+    agentAttribution.push({
+      agent: id,
+      name: snap.name,
+      provider,
+      tokensToday,
+      tokens5h,
+      costToday: Math.round(costToday * 10_000) / 10_000,
+    });
+  }
+
+  return c.json({
+    window5h: {
+      totalTokens: totalTokens5h,
+      capPercent: Math.round(cap5hPercent * 10) / 10,
+      resetCountdownMs,
+      resetCountdownSec: resetCountdownMs !== null ? Math.floor(resetCountdownMs / 1000) : null,
+      windowStartedAt,
+      nextResetAt,
+    },
+    weekly: {
+      totalTokens: totalTokens7d,
+      capPercent: Math.round(capWeeklyPercent * 10) / 10,
+      capTokens: CAP_WEEKLY,
+    },
+    burnRate: {
+      tokensPerHour: Math.round(burnRateTph),
+      tokensPerMinute: Math.round(burnRateTph / 60),
+    },
+    agents: agentAttribution,
+  });
+});
+
 app.get('/api/usage/24h', (c) => {
   const agent = c.req.query('agent');
   if (!agent || !AGENT_IDS.includes(agent as any)) {
