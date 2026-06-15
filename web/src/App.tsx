@@ -20,12 +20,12 @@ import { CommandPanel } from './components/CommandPanel';
 import { VoiceTTS } from './components/VoiceTTS';
 import { AlertSettings } from './components/AlertSettings';
 import { ProactiveHintBanner } from './components/ProactiveHintBanner';
-import { MissionControlPanel } from './components/MissionControlPanel';
 import type { AgentId, AgentSnapshot, CrashNotificationEntry } from './types';
 
-// DetailPanel is lazy-loaded — only opened on click
+// Lazy-loaded panels — only loaded when opened/rendered
 const LazyDetailPanel = lazy(() => import('./components/DetailPanel').then((m) => ({ default: m.DetailPanel })));
 const LazyQuotaPanel = lazy(() => import('./components/QuotaPanel').then((m) => ({ default: m.QuotaPanel })));
+const LazyMissionControlPanel = lazy(() => import('./components/MissionControlPanel').then((m) => ({ default: m.MissionControlPanel })));
 
 export default function App() {
   const agents = useStore((s) => s.agents);
@@ -165,7 +165,9 @@ export default function App() {
 
         {/* MissionControl panel — quota state + epic pipeline + parked cards + activity */}
         <div className="px-6 mb-4">
-          <MissionControlPanel />
+          <Suspense fallback={null}>
+            <LazyMissionControlPanel />
+          </Suspense>
         </div>
 
         {/* Provider rollup */}
