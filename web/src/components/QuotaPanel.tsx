@@ -64,6 +64,46 @@ function formatBurnRate(tph: number): string {
   return `${tph}/hr`;
 }
 
+// ── Alert Badge (pre-cap threshold warning) ───────────────────────────────────
+
+const THRESHOLD_WARN = 80;
+const THRESHOLD_DANGER = 90;
+
+interface AlertBadgeProps {
+  percent: number;
+  label: string;
+}
+
+function AlertBadge({ percent, label }: AlertBadgeProps) {
+  if (percent < THRESHOLD_WARN) return null;
+
+  const isDanger = percent >= THRESHOLD_DANGER;
+  const prefersReducedMotion = useReducedMotion();
+
+  return (
+    <div
+      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums ${
+        isDanger
+          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+          : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+      }`}
+      role="status"
+      aria-label={`${label} ${Math.round(percent)}% — ${isDanger ? 'danger' : 'warning'} threshold`}
+    >
+      <span aria-hidden="true">{isDanger ? '🔴' : '🟡'}</span>
+      <span>{Math.round(percent)}%</span>
+      {isDanger && !prefersReducedMotion && (
+        <span
+          className="animate-pulse"
+          aria-hidden="true"
+        >
+          ⚠
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ── Gauge (CSS arc, no npm dep) ───────────────────────────────────────────────
 
 const GAUGE_R = 38;
@@ -243,17 +283,23 @@ export function QuotaPanel() {
         </div>
 
         {/* Gauges row */}
-        <div className="flex items-center gap-6 px-4 py-4 border-b border-slate-700/50">
-          <GaugeArc
-            percent={window5h.capPercent}
-            color={cap5hColor}
-            label={`5h cap (${formatTokens(window5h.totalTokens)})`}
-          />
-          <GaugeArc
-            percent={weekly.capPercent}
-            color={capWkColor}
-            label={`weekly cap (${formatTokens(weekly.totalTokens)})`}
-          />
+        <div className="flex items-start gap-6 px-4 py-4 border-b border-slate-700/50">
+          <div className="flex flex-col items-center gap-1.5">
+            <GaugeArc
+              percent={window5h.capPercent}
+              color={cap5hColor}
+              label={`5h cap (${formatTokens(window5h.totalTokens)})`}
+            />
+            <AlertBadge percent={window5h.capPercent} label="5h" />
+          </div>
+          <div className="flex flex-col items-center gap-1.5">
+            <GaugeArc
+              percent={weekly.capPercent}
+              color={capWkColor}
+              label={`weekly cap (${formatTokens(weekly.totalTokens)})`}
+            />
+            <AlertBadge percent={weekly.capPercent} label="weekly" />
+          </div>
           <div className="flex flex-col gap-1 ml-4">
             <span className="text-[10px] text-slate-500 uppercase tracking-wide">Reset in</span>
             <span className="text-lg font-bold text-slate-100 tabular-nums">{countdown}</span>
