@@ -282,9 +282,10 @@ export function QuotaPanel() {
           </span>
         </div>
 
-        {/* Gauges row */}
-        <div className="flex items-start gap-6 px-4 py-4 border-b border-slate-700/50">
-          <div className="flex flex-col items-center gap-1.5">
+        {/* Gauges row — stacks vertically on narrow viewports */}
+        <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6 px-4 py-4 border-b border-slate-700/50">
+          {/* Gauges group */}
+          <div className="flex flex-row sm:flex-col items-center sm:items-center gap-4 sm:gap-1.5">
             <GaugeArc
               percent={window5h.capPercent}
               color={cap5hColor}
@@ -292,7 +293,7 @@ export function QuotaPanel() {
             />
             <AlertBadge percent={window5h.capPercent} label="5h" />
           </div>
-          <div className="flex flex-col items-center gap-1.5">
+          <div className="flex flex-row sm:flex-col items-center sm:items-center gap-4 sm:gap-1.5">
             <GaugeArc
               percent={weekly.capPercent}
               color={capWkColor}
@@ -300,7 +301,9 @@ export function QuotaPanel() {
             />
             <AlertBadge percent={weekly.capPercent} label="weekly" />
           </div>
-          <div className="flex flex-col gap-1 ml-4">
+
+          {/* Reset info */}
+          <div className="flex flex-col gap-1 sm:ml-4">
             <span className="text-[10px] text-slate-500 uppercase tracking-wide">Reset in</span>
             <span className="text-lg font-bold text-slate-100 tabular-nums">{countdown}</span>
             <span className="text-[10px] text-slate-600">
@@ -309,7 +312,9 @@ export function QuotaPanel() {
                 : '—'}
             </span>
           </div>
-          <div className="flex flex-col gap-1 ml-auto text-right">
+
+          {/* Burn rate */}
+          <div className="flex flex-col gap-1 ml-auto sm:ml-0 text-right sm:text-right">
             <span className="text-[10px] text-slate-500 uppercase tracking-wide">Burn rate</span>
             <span className="text-sm font-bold text-slate-100">{formatBurnRate(burnRate.tokensPerHour)}</span>
             <span className="text-[10px] text-slate-600">
