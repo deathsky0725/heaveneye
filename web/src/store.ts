@@ -112,7 +112,8 @@ export const useStore = create<State>((set, get) => ({
   addCrashNotifications: (entries) => {
     set((s) => ({
       crashNotifications: [...s.crashNotifications, ...entries].slice(-50),
-      crashNotificationLastChecked: Date.now(),
+      // Advance cursor to the latest event ts so the backend won't re-send these
+      crashNotificationLastChecked: Math.max(...entries.map((e) => e.ts)),
     }));
   },
   dispatchTauriNotification: async (entry) => {
