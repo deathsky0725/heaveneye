@@ -118,3 +118,16 @@ export interface CrashNotificationEntry {
   title: string;
   body: string;
 }
+
+/** L1 — Proactive alert entry returned by GET /api/alerts */
+export type AlertSeverity = 'warning' | 'critical';
+
+export interface AlertEntry {
+  type: 'cap_80' | 'cap_90' | 'stuck_agent' | 'epic_done' | 'parked_card';
+  target: string;       // human-readable target id (agent name, epic id, card id, etc.)
+  severity: AlertSeverity;
+  ts: string;           // ISO8601 when this alert was raised
+  message: string;      // human-readable alert text
+  /** For dedup: the canonical key that uniquely identifies this alert instance */
+  dedupKey: string;     // hash of (type, target)
+}

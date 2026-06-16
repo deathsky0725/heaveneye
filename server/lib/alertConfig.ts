@@ -23,6 +23,8 @@ export interface AlertConfig {
   thresholds: AlertThresholds;
   /** Whether alerts are enabled at all */
   enabled: boolean;
+  /** Discord channel slugs where alert notifications are sent (e.g. '#alerts', 'alerts-channel') */
+  enabledChannels: string[];
 }
 
 const DEFAULT_THRESHOLDS: AlertThresholds = {
@@ -35,6 +37,7 @@ const DEFAULT_THRESHOLDS: AlertThresholds = {
 const DEFAULT_CONFIG: AlertConfig = {
   thresholds: DEFAULT_THRESHOLDS,
   enabled: true,
+  enabledChannels: [],
 };
 
 const CONFIG_DIR = `${HOME}/.heaveneye`;
@@ -52,6 +55,7 @@ export function readAlertConfig(): AlertConfig {
     const parsed = JSON.parse(raw) as Partial<AlertConfig>;
     return {
       enabled: parsed.enabled ?? DEFAULT_CONFIG.enabled,
+      enabledChannels: parsed.enabledChannels ?? DEFAULT_CONFIG.enabledChannels,
       thresholds: {
         ramBytes: parsed.thresholds?.ramBytes ?? DEFAULT_THRESHOLDS.ramBytes,
         blockedTaskAgeMs: parsed.thresholds?.blockedTaskAgeMs ?? DEFAULT_THRESHOLDS.blockedTaskAgeMs,
@@ -70,6 +74,7 @@ export function writeAlertConfig(updates: Partial<AlertConfig>): { ok: true } | 
     const current = readAlertConfig();
     const updated: AlertConfig = {
       enabled: updates.enabled ?? current.enabled,
+      enabledChannels: updates.enabledChannels ?? current.enabledChannels,
       thresholds: {
         ramBytes: updates.thresholds?.ramBytes ?? current.thresholds.ramBytes,
         blockedTaskAgeMs: updates.thresholds?.blockedTaskAgeMs ?? current.thresholds.blockedTaskAgeMs,

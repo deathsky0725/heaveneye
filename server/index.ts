@@ -19,6 +19,8 @@ import { startCrashDetector, getCrashNotificationConfig, setNotificationEnabled 
 import { gatewayStart, gatewayStop } from './lib/gatewayControl.js';
 import { getAgentHealthScore } from './lib/agentHealth.ts';
 import { readAlertConfig, writeAlertConfig, type AlertConfig } from './lib/alertConfig.ts';
+import { readRemoteAlertSettings, writeRemoteAlertSettings, type RemoteAlertConfig } from './lib/remoteAlertSettings.ts';
+import { scanAlerts, popTauriAlertEntries, type TauriAlertEntry } from './lib/alerts.ts';
 import { computeCost, priceForModel } from './lib/costCalculator.js';
 import { chatCompletion, buildSystemPrompt, hasTeamCommandIntent, buildEpicDraft } from './lib/llm.ts';
 import exportApp from './routes/export.ts';
@@ -789,11 +791,37 @@ app.get('/api/config/alerts', (c) => {
   return c.json(config);
 });
 
+// GET /api/alerts — L1 proactive alert scan (4 event types + dedup + throttle)
+app.get('/api/alerts', (c) => {
+  const pendingAlerts = scanAlerts();
+  return c.json({ pendingAlerts });
+});
+
+// GET /api/alerts/tauri — poll pending Tauri notifications for browser dispatch
+app.get('/api/alerts/tauri', (c) => {
+  const since = Number(c.req.query('since') ?? 0);
+  const entries = popTauriAlertEntries(since);
+  return c.json({ notifications: entries });
+});
+
 app.post('/api/config/alerts', async (c) => {
   const body = await c.req.json<Partial<AlertConfig>>();
   const result = writeAlertConfig(body);
   if (!result.ok) return c.json({ error: result.error }, 500);
   return c.json({ ok: true, config: readAlertConfig() });
+});
+
+// GET /api/settings — RemoteAlertSettings (L3)
+app.get('/api/settings', (c) => {
+  return c.json(readRemoteAlertSettings());
+});
+
+// POST /api/settings — RemoteAlertSettings (L3)
+app.post('/api/settings', async (c) => {
+  const body = await c.req.json<Partial<RemoteAlertConfig>>();
+  const result = writeRemoteAlertSettings(body);
+  if (!result.ok) return c.json({ error: result.error }, 500);
+  return c.json({ ok: true, config: readRemoteAlertSettings() });
 });
 
 // ---- Reports / result.md viewer API (Phase D.1) ----

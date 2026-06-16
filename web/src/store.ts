@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AgentId, AgentSnapshot, ServerEvent, Usage5hEntry, InboxEntry, KanbanEventEntry, SystemHealth, NotificationEntry, CrashNotificationEntry } from './types';
+import type { AgentId, AgentSnapshot, ServerEvent, Usage5hEntry, InboxEntry, KanbanEventEntry, SystemHealth, NotificationEntry, CrashNotificationEntry, TauriAlertEntry } from './types';
 import type { ActivityEvent } from './components/RiveAvatar';
 import { useToastStore } from './store/toastStore';
 import { useProactiveHintStore, type ProactiveEventKind } from './store/proactiveHintStore';
@@ -40,6 +40,7 @@ interface State {
   notifications: NotificationEntry[];
   crashNotifications: CrashNotificationEntry[];
   crashNotificationLastChecked: number;
+  lastTauriAlertChecked: number;
   killError: string | null;
   killSuccess: string | null;
   detailPanelId: AgentId | null;
@@ -59,6 +60,7 @@ interface State {
   triggerParticleBurst: (edgeId: string) => void;
   addCrashNotifications: (entries: CrashNotificationEntry[]) => void;
   dispatchTauriNotification: (entry: CrashNotificationEntry) => Promise<void>;
+  setLastTauriAlertChecked: (ts: number) => void;
   selectedBoard: string;
   setSelectedBoard: (board: string) => void;
 }
@@ -85,6 +87,7 @@ export const useStore = create<State>((set, get) => ({
   notifications: [],
   crashNotifications: [],
   crashNotificationLastChecked: 0,
+  lastTauriAlertChecked: 0,
   killError: null,
   killSuccess: null,
   detailPanelId: null,
@@ -116,6 +119,7 @@ export const useStore = create<State>((set, get) => ({
       crashNotificationLastChecked: Math.max(...entries.map((e) => e.ts)),
     }));
   },
+  setLastTauriAlertChecked: (ts) => set({ lastTauriAlertChecked: ts }),
   dispatchTauriNotification: async (entry) => {
     if (typeof (window as any).__TAURI__ === 'undefined') return;
     try {
