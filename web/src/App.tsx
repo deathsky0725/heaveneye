@@ -18,6 +18,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { CommandPanel } from './components/CommandPanel';
 import { VoiceTTS } from './components/VoiceTTS';
 import { AlertSettings } from './components/AlertSettings';
+import { RemoteAlertSettings } from './components/RemoteAlertSettings';
 import { ProactiveHintBanner } from './components/ProactiveHintBanner';
 import type { AgentId, AgentSnapshot, CrashNotificationEntry } from './types';
 
@@ -36,6 +37,7 @@ export default function App() {
   const currentTheme = useThemeStore((s) => s.currentTheme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
+  const [remoteAlertSettingsOpen, setRemoteAlertSettingsOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [commandPanelOpen, setCommandPanelOpen] = useState(false);
 
@@ -126,6 +128,13 @@ export default function App() {
               🔔 Alerts
             </button>
             <button
+              onClick={() => setRemoteAlertSettingsOpen(true)}
+              className="text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
+              title="Remote Alert Settings"
+            >
+              📡 Remote
+            </button>
+            <button
               onClick={() => setChatOpen(true)}
               className="text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
               title="Chat"
@@ -202,6 +211,9 @@ export default function App() {
       <CommandPalette />
       {alertSettingsOpen && (
         <AlertSettings onClose={() => setAlertSettingsOpen(false)} />
+      )}
+      {remoteAlertSettingsOpen && (
+        <RemoteAlertSettings onClose={() => setRemoteAlertSettingsOpen(false)} />
       )}
       {chatOpen && (
         <ChatPanel onClose={() => setChatOpen(false)} />
