@@ -45,22 +45,18 @@ function QuotaWidget({ qs }: { qs: AutopilotData['quotaState'] }) {
     : '⚪ ปิด';
 
   return (
-    <div className="flex flex-wrap items-center gap-3 text-xs">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs min-w-0">
       <span className="font-medium text-slate-200">{status}</span>
       {qs.since && (
-        <span className="text-slate-500">
-          since {formatTs(qs.since)}
-        </span>
+        <span className="text-slate-500">since {formatTs(qs.since)}</span>
       )}
       {qs.last_result && (
-        <span className="text-slate-500">
+        <span className="text-slate-500 truncate max-w-32" title={qs.last_result}>
           probe: {qs.last_result}
         </span>
       )}
       {qs.transitions > 0 && (
-        <span className="text-slate-600">
-          {qs.transitions} transitions
-        </span>
+        <span className="text-slate-600">{qs.transitions} transitions</span>
       )}
     </div>
   );

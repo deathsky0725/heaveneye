@@ -274,10 +274,10 @@ export function QuotaPanel() {
     <div className="px-6 pb-4">
       <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-700/50">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-700/50">
           <span className="text-sm">📊</span>
           <span className="text-xs font-semibold text-slate-200 uppercase tracking-wide">Quota</span>
-          <span className="ml-auto text-xs text-slate-500">
+          <span className="ml-auto text-xs text-slate-500 max-sm:max-w-28 max-sm:truncate">
             burn {formatBurnRate(burnRate.tokensPerHour)}
           </span>
         </div>
