@@ -188,6 +188,13 @@ export interface CrashNotificationEntry {
   body: string;
 }
 
+/** Tauri notification entry returned by GET /api/alerts/tauri */
+export interface TauriAlertEntry {
+  ts: string;
+  title: string;
+  body: string;
+}
+
 // ── MissionControl /api/autopilot (Epic I2) ─────────────────────────────────
 export type EpicStage = 'intake' | 'card_plan' | 'ack' | 'cards' | 'done';
 

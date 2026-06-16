@@ -20,7 +20,7 @@ import { VoiceTTS } from './components/VoiceTTS';
 import { AlertSettings } from './components/AlertSettings';
 import { RemoteAlertSettings } from './components/RemoteAlertSettings';
 import { ProactiveHintBanner } from './components/ProactiveHintBanner';
-import type { AgentId, AgentSnapshot, CrashNotificationEntry } from './types';
+import type { AgentId, AgentSnapshot, CrashNotificationEntry, TauriAlertEntry } from './types';
 
 // Lazy-loaded panels — only loaded when opened/rendered
 const LazyDetailPanel = lazy(() => import('./components/DetailPanel').then((m) => ({ default: m.DetailPanel })));
@@ -71,6 +71,36 @@ export default function App() {
         // Dispatch each to macOS notification center via Tauri
         for (const entry of data.notifications) {
           await useStore.getState().dispatchTauriNotification(entry);
+        }
+      } catch { /* silent */ }
+    };
+
+    poll();
+    const id = setInterval(poll, POLL_MS);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  // Tauri alert notification polling — poll /api/alerts/tauri every 2s
+  useEffect(() => {
+    const POLL_MS = 2_000;
+    let stopped = false;
+
+    const poll = async () => {
+      if (stopped) return;
+      try {
+        const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
+        const since = useStore.getState().lastTauriAlertChecked;
+        const res = await fetch(`${base}/api/alerts/tauri?since=${since}`);
+        if (!res.ok) return;
+        const data = await res.json() as { notifications: TauriAlertEntry[] };
+        if (!data.notifications?.length) return;
+        const latestTs = Date.now();
+        useStore.getState().setLastTauriAlertChecked(latestTs);
+        for (const entry of data.notifications) {
+          await useStore.getState().dispatchTauriNotification(entry as unknown as CrashNotificationEntry);
         }
       } catch { /* silent */ }
     };

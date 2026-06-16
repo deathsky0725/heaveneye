@@ -2,7 +2,10 @@
  * alerts.ts — L1 Proactive Alert Engine
  *
  * Detects 4 event types, deduplicates within 10 min, throttles Discord
- * notifications to 1 per 30 s, and reads enabled channels from alertConfig.
+ * notifications to 1 per 30 s, reads enabled channels from alertConfig,
+ * respects L3 RemoteAlertSettings toggles (per event-type Discord/Tauri),
+ * fires Discord via webhook (server-side) and surfaces Tauri notifications
+ * via a server-side queue read by the browser.
  *
  * Data sources (all from L-STEP0 verdict A):
  *   cap 80%/90%  → /api/quota → cap5hPercent, capWeeklyPercent
@@ -16,6 +19,8 @@ import { join } from 'node:path';
 import { Database } from 'bun:sqlite';
 import { state } from '../state/engine.ts';
 import { readAlertConfig } from './alertConfig.ts';
+import { readRemoteAlertSettings, discordToggleForType, tauriToggleForType } from './remoteAlertSettings.ts';
+import { fireDiscordNotification } from './discordNotifier.ts';
 import { AGENT_IDS, AGENTS, HOME, type AgentId } from '../config.ts';
 import type { AlertEntry, AlertSeverity } from '../state/types.ts';
 
@@ -33,6 +38,37 @@ const dedupLog = new Map<string, number>();
 // ── Throttle state ─────────────────────────────────────────────────────────
 
 let lastDiscordFireMs = 0;
+
+// ── Tauri notification queue ─────────────────────────────────────────────────
+
+/** In-memory queue of pending Tauri notifications for the browser to poll */
+const pendingTauriNotifications: TauriAlertEntry[] = [];
+const TAURI_QUEUE_MAX = 50;
+
+export interface TauriAlertEntry {
+  ts: string;
+  title: string;
+  body: string;
+}
+
+/** Get and clear all pending Tauri alert entries since `since` (Unix ms) */
+export function popTauriAlertEntries(since: number): TauriAlertEntry[] {
+  const sinceDate = new Date(since);
+  const result = pendingTauriNotifications.filter((e) => new Date(e.ts) > sinceDate);
+  // Remove returned entries
+  const returnedKeys = new Set(result.map((e) => e.ts + e.title));
+  const remaining = pendingTauriNotifications.filter((e) => !returnedKeys.has(e.ts + e.title));
+  pendingTauriNotifications.length = 0;
+  pendingTauriNotifications.push(...remaining);
+  return result;
+}
+
+function enqueueTauriNotification(title: string, body: string): void {
+  if (pendingTauriNotifications.length >= TAURI_QUEUE_MAX) {
+    pendingTauriNotifications.shift();
+  }
+  pendingTauriNotifications.push({ ts: new Date().toISOString(), title, body });
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -56,6 +92,50 @@ function canThrottleFire(): boolean {
 
 function severityForCap(pct: number): AlertSeverity {
   return pct >= 90 ? 'critical' : 'warning';
+}
+
+// ── Notification dispatch ────────────────────────────────────────────────────
+
+/**
+ * Fire Discord webhook (server-side) and enqueue a Tauri notification
+ * for the browser, if the respective channel is enabled.
+ */
+async function fireAlert(alert: AlertEntry): Promise<void> {
+  // Check L3 RemoteAlertSettings toggles
+  const settings = readRemoteAlertSettings();
+  const discordKey = discordToggleForType(alert.type);
+  const tauriKey = tauriToggleForType(alert.type);
+
+  // --- Discord ---
+  if (discordKey !== null) {
+    const discordEnabled = settings.toggles[discordKey] ?? true;
+    if (discordEnabled && canThrottleFire()) {
+      // Emit SSE event
+      state.onNotificationEntry({
+        ts: alert.ts,
+        platform: 'discord',
+        chat_id: 'hermes-agent',
+        task_id: alert.dedupKey,
+        task_title: alert.target,
+        event_kind: alert.type,
+        agent: 'yefan' as AgentId,
+        message: alert.message,
+      });
+      // Fire actual Discord webhook
+      await fireDiscordNotification(alert.type, alert.severity, alert.target, alert.message, alert.ts);
+    }
+  }
+
+  // --- Tauri (browser-side macOS notification) ---
+  if (tauriKey !== null) {
+    const tauriEnabled = settings.toggles[tauriKey] ?? false;
+    if (tauriEnabled) {
+      // Enqueue for browser polling
+      const emoji = alert.severity === 'critical' ? '[!]' : '[i]';
+      const title = `${emoji} heaveneye: ${alert.type.replace(/_/g, ' ')}`;
+      enqueueTauriNotification(title, alert.message);
+    }
+  }
 }
 
 // ── Event detectors ────────────────────────────────────────────────────────
@@ -96,7 +176,7 @@ function detectCapAlerts(currentAlerts: AlertEntry[]): void {
         dedupKey: key,
       };
       currentAlerts.push(entry);
-      fireDiscord(entry, config);
+      fireAlert(entry).catch(console.warn);
     }
   }
 
@@ -128,7 +208,7 @@ function detectCapAlerts(currentAlerts: AlertEntry[]): void {
         dedupKey: key,
       };
       currentAlerts.push(entry);
-      fireDiscord(entry, config);
+      fireAlert(entry).catch(console.warn);
     }
   }
 }
@@ -165,7 +245,7 @@ function detectStuckAgents(currentAlerts: AlertEntry[]): void {
         dedupKey: key,
       };
       currentAlerts.push(entry);
-      fireDiscord(entry, config);
+      fireAlert(entry).catch(console.warn);
     }
   }
 }
@@ -185,8 +265,6 @@ function detectEpicDone(currentAlerts: AlertEntry[]): void {
     const content = readFileSync(outboxPath, 'utf8');
     const lines = content.split('\n').filter((l) => l.trim());
 
-    // Track which epic ids we've already alerted on (persistent within process lifetime)
-    // Use a Set to avoid re-alerting on the same epic within the same dedup window
     for (const line of lines) {
       try {
         const entry = JSON.parse(line);
@@ -205,7 +283,7 @@ function detectEpicDone(currentAlerts: AlertEntry[]): void {
           dedupKey: key,
         };
         currentAlerts.push(entry2);
-        fireDiscord(entry2, config);
+        fireAlert(entry2).catch(console.warn);
       } catch {
         // skip malformed lines
       }
@@ -261,34 +339,11 @@ function detectParkedCards(currentAlerts: AlertEntry[]): void {
           dedupKey: key,
         };
         currentAlerts.push(entry3);
-        fireDiscord(entry3, config);
+        fireAlert(entry3).catch(console.warn);
       }
     } catch {
       // skip individual board errors
     }
-  }
-}
-
-// ── Discord notification ────────────────────────────────────────────────────
-
-function fireDiscord(alert: AlertEntry, config: ReturnType<typeof readAlertConfig>): void {
-  if (!canThrottleFire()) return;
-
-  // Read enabled channels from config (discord channel slugs)
-  const channels: string[] = config.enabledChannels ?? [];
-  if (channels.length === 0) return; // no channels enabled — skip
-
-  for (const chatId of channels) {
-    state.onNotificationEntry({
-      ts: alert.ts,
-      platform: 'discord',
-      chat_id: chatId,
-      task_id: alert.dedupKey,
-      task_title: alert.target,
-      event_kind: alert.type,
-      agent: 'yefan' as AgentId,
-      message: alert.message,
-    });
   }
 }
 
