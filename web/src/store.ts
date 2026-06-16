@@ -2,6 +2,32 @@ import { create } from 'zustand';
 import type { AgentId, AgentSnapshot, ServerEvent, Usage5hEntry, InboxEntry, KanbanEventEntry, SystemHealth, NotificationEntry, CrashNotificationEntry } from './types';
 import type { ActivityEvent } from './components/RiveAvatar';
 import { useToastStore } from './store/toastStore';
+import { useProactiveHintStore, type ProactiveEventKind } from './store/proactiveHintStore';
+
+const PROACTIVE_KINDS: ProactiveEventKind[] = ['blocked_task_age', 'inactivity_timeout', 'burn_rate_breach'];
+
+function buildProactiveMessage(eventKind: ProactiveEventKind, agent: AgentId, taskTitle?: string): string {
+  switch (eventKind) {
+    case 'blocked_task_age':
+      return taskTitle
+        ? `👁️ งาน "${taskTitle}" ติดบล็อกมานาน — ลองดูที่ anmaioyi`
+        : `👁️ งานบางตัวติดบล็อกมานาน — ลองดูที่ anmaioyi`;
+    case 'inactivity_timeout':
+      return `⏰ Agent ${agent} หยุดนิ่งมาหลายนาทีแล้ว — ลองดูที่ anmaioyi`;
+    case 'burn_rate_breach':
+      return `🚨 ${agent} ใช้โทเค็นสูงผิดปกติ — ลองดูที่ anmaioyi`;
+  }
+}
+
+function fireProactiveHint(entry: NotificationEntry): void {
+  if (!PROACTIVE_KINDS.includes(entry.event_kind as ProactiveEventKind)) return;
+  const eventKind = entry.event_kind as ProactiveEventKind;
+  const key = `${eventKind}:${entry.agent}`;
+  const store = useProactiveHintStore.getState();
+  if (store.isHintDismissed(eventKind, entry.agent)) return;
+  store.addHint({ key, eventKind, agent: entry.agent, message: buildProactiveMessage(eventKind, entry.agent, entry.task_title), shown: true });
+  useToastStore.getState().addToast(buildProactiveMessage(eventKind, entry.agent, entry.task_title), 'warning');
+}
 
 interface State {
   agents: AgentSnapshot[];
@@ -143,6 +169,7 @@ export const useStore = create<State>((set, get) => ({
       set({ systemHealth: ev.health });
     } else if (ev.type === 'notification') {
       set((s) => ({ notifications: [ev.entry, ...s.notifications].slice(0, 50) }));
+      fireProactiveHint(ev.entry);
     } else if (ev.type === 'agent_activity') {
       useStore.getState().triggerActivity(ev.agentId, ev.event as ActivityEvent);
     }

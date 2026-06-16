@@ -203,6 +203,46 @@ class StateEngine {
   }
 
   /**
+   * Recent session/task history for a single agent — used by /api/chat
+   * to give the LLM per-agent work history instead of just current state.
+   * Returns up to `limit` entries (default 5), active sessions first, then
+   * most-recently-ended first. Each entry carries duration, token count, and
+   * the task title if known.
+   */
+  getAgentSessions(agentId: AgentId, limit = 5): Array<{
+    sessionId: string;
+    taskTitle?: string;
+    startTs: number;
+    endTs: number | null;
+    durationMs: number;
+    totalTokens: number;
+    status: 'active' | 'ended';
+  }> {
+    const all = this.sessions.get(agentId) ?? [];
+    const active = all.filter((s) => s.endTs === null);
+    const ended = all
+      .filter((s) => s.endTs !== null)
+      .sort((a, b) => (b.endTs ?? 0) - (a.endTs ?? 0));
+    const merged = [...active, ...ended];
+    return merged.slice(0, limit).map((s) => {
+      const endTs = s.endTs;
+      const durationMs = endTs ? (endTs - s.startTs) : (Date.now() - s.startTs);
+      // Look up task title from the agent's current task or most recent patch
+      const snap = this.agents.get(agentId);
+      const taskTitle = snap?.currentTask?.title;
+      return {
+        sessionId: s.sessionId,
+        taskTitle,
+        startTs: s.startTs,
+        endTs,
+        durationMs,
+        totalTokens: s.totalTokens,
+        status: endTs === null ? 'active' : 'ended',
+      };
+    });
+  }
+
+  /**
    * 7d daily buckets for a single agent — used by /api/usage/7d.
    * Returns 7 buckets (oldest first, today last), each summing all token
    * components for that calendar day (local time).

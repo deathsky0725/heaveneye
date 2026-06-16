@@ -1,9 +1,28 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { useToastStore } from '../store/toastStore';
+import { VoiceSTT } from './VoiceSTT';
 
 interface CommandPanelProps {
   onClose: () => void;
+}
+
+// Quick-action command templates
+const QUICK_ACTIONS = [
+  { label: 'Phase A start', command: 'Phase A start' },
+  { label: 'Phase B start', command: 'Phase B start' },
+  { label: 'review', command: 'review' },
+  { label: 'status check', command: 'status check' },
+];
+
+async function postCommand(text: string): Promise<void> {
+  const base = import.meta.env.DEV ? 'http://localhost:7878' : '';
+  const res = await fetch(`${base}/api/command`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
 export function CommandPanel({ onClose }: CommandPanelProps) {
@@ -55,6 +74,16 @@ export function CommandPanel({ onClose }: CommandPanelProps) {
     }
   };
 
+  const handleQuickAction = async (command: string) => {
+    try {
+      await postCommand(command);
+      useToastStore.getState().addToast(`ส่ง "${command}" แล้ว`, 'success');
+      onClose();
+    } catch {
+      useToastStore.getState().addToast('ส่งคำสั่งไม่สำเร็จ', 'error');
+    }
+  };
+
   return prefersReducedMotion ? (
     // Static — no animation
     <div
@@ -70,7 +99,19 @@ export function CommandPanel({ onClose }: CommandPanelProps) {
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-200 transition-colors text-lg leading-none">×</button>
         </div>
-        <form onSubmit={handleSubmit} className="flex items-center gap-3 px-5 py-4">
+        {/* Quick-action pills */}
+        <div className="flex flex-wrap gap-2 px-5 pt-4">
+          {QUICK_ACTIONS.map(({ label, command }) => (
+            <button
+              key={command}
+              onClick={() => handleQuickAction(command)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-slate-100 transition-colors cursor-pointer"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <form onSubmit={handleSubmit} className="flex items-center gap-2 px-5 py-4">
           <input
             ref={inputRef}
             type="text"
@@ -79,6 +120,10 @@ export function CommandPanel({ onClose }: CommandPanelProps) {
             placeholder="พิมพ์คำสั่ง…"
             disabled={loading}
             className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-slate-100 placeholder-slate-500 text-sm outline-none focus:border-white/25 transition-colors disabled:opacity-50"
+          />
+          <VoiceSTT
+            onResult={(t) => setText((prev) => (prev ? prev + ' ' + t : t))}
+            className="text-base"
           />
           <button
             type="submit"
@@ -129,8 +174,21 @@ export function CommandPanel({ onClose }: CommandPanelProps) {
           </button>
         </div>
 
+        {/* Quick-action pills */}
+        <div className="flex flex-wrap gap-2 px-5 pt-4">
+          {QUICK_ACTIONS.map(({ label, command }) => (
+            <button
+              key={command}
+              onClick={() => handleQuickAction(command)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-slate-100 transition-colors cursor-pointer"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Form */}
-        <form onSubmit={handleSubmit} className="flex items-center gap-3 px-5 py-4">
+        <form onSubmit={handleSubmit} className="flex items-center gap-2 px-5 py-4">
           <input
             ref={inputRef}
             type="text"
@@ -139,6 +197,10 @@ export function CommandPanel({ onClose }: CommandPanelProps) {
             placeholder="พิมพ์คำสั่ง…"
             disabled={loading}
             className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-slate-100 placeholder-slate-500 text-sm outline-none focus:border-white/25 transition-colors disabled:opacity-50"
+          />
+          <VoiceSTT
+            onResult={(t) => setText((prev) => (prev ? prev + ' ' + t : t))}
+            className="text-base"
           />
           <button
             type="submit"

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
+import { VoiceSTT } from './VoiceSTT';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -11,6 +12,30 @@ interface ChatPanelProps {
   onClose: () => void;
 }
 
+const LS_KEY = 'heaveneye_chat_history';
+const MAX_MESSAGES = 50;
+
+function loadHistory(): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ChatMessage[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(msgs: ChatMessage[]) {
+  try {
+    // newest first in storage — prune to MAX_MESSAGES oldest user/assistant pairs
+    const trimmed = msgs.slice(-MAX_MESSAGES);
+    localStorage.setItem(LS_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* storage full or unavailable — non-fatal */
+  }
+}
+
 function EpicDraftBadge() {
   return (
     <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
@@ -20,23 +45,30 @@ function EpicDraftBadge() {
 }
 
 export function ChatPanel({ onClose }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadHistory);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prefersReducedMotion = useReducedMotion();
+  const isReloading = useRef(true); // guard: skip scroll animation on initial load from storage
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+    bottomRef.current?.scrollIntoView({ behavior: prefersReducedMotion || isReloading.current ? 'auto' : 'smooth' });
+    isReloading.current = false;
   }, [messages, prefersReducedMotion]);
 
   // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Persist messages to localStorage on every change
+  useEffect(() => {
+    saveHistory(messages);
+  }, [messages]);
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -189,6 +221,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 className="flex-1 bg-slate-800/80 border border-slate-600/60 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/30"
                 style={{ maxHeight: '120px' }}
                 disabled={loading}
+              />
+              <VoiceSTT
+                onResult={(t) => setInput((prev) => (prev ? prev + ' ' + t : t))}
+                className="text-base"
               />
               <button
                 onClick={sendMessage}

@@ -19,10 +19,13 @@ import { CommandPalette } from './components/CommandPalette';
 import { CommandPanel } from './components/CommandPanel';
 import { VoiceTTS } from './components/VoiceTTS';
 import { AlertSettings } from './components/AlertSettings';
+import { ProactiveHintBanner } from './components/ProactiveHintBanner';
 import type { AgentId, AgentSnapshot, CrashNotificationEntry } from './types';
 
-// DetailPanel is lazy-loaded — only opened on click
+// Lazy-loaded panels — only loaded when opened/rendered
 const LazyDetailPanel = lazy(() => import('./components/DetailPanel').then((m) => ({ default: m.DetailPanel })));
+const LazyQuotaPanel = lazy(() => import('./components/QuotaPanel').then((m) => ({ default: m.QuotaPanel })));
+const LazyMissionControlPanel = lazy(() => import('./components/MissionControlPanel').then((m) => ({ default: m.MissionControlPanel })));
 
 export default function App() {
   const agents = useStore((s) => s.agents);
@@ -142,6 +145,9 @@ export default function App() {
           </div>
         </header>
 
+        {/* Proactive hint banners — surface alert threshold events */}
+        <ProactiveHintBanner />
+
         {/* Gateway health strip */}
         <div className="px-6 mb-4">
           <SystemHealth />
@@ -150,6 +156,18 @@ export default function App() {
         {/* Team health summary strip (Phase E9) */}
         <div className="px-6 mb-4">
           <HealthStrip />
+        </div>
+
+        {/* Quota gauges — 5h cap % + weekly cap % + reset countdown + burn rate */}
+        <div className="px-6 mb-4">
+          <LazyQuotaPanel />
+        </div>
+
+        {/* MissionControl panel — quota state + epic pipeline + parked cards + activity */}
+        <div className="px-6 mb-4">
+          <Suspense fallback={null}>
+            <LazyMissionControlPanel />
+          </Suspense>
         </div>
 
         {/* Provider rollup */}

@@ -188,7 +188,54 @@ export interface CrashNotificationEntry {
   body: string;
 }
 
-// ── Team Health Strip (Phase E9) ───────────────────────────────────────────
+// ── MissionControl /api/autopilot (Epic I2) ─────────────────────────────────
+export type EpicStage = 'intake' | 'card_plan' | 'ack' | 'cards' | 'done';
+
+export interface EpicCard {
+  id: string;
+  title: string;
+}
+
+export interface EpicPipelineEntry {
+  id: string;
+  project: string;
+  stage: EpicStage;
+  cards: EpicCard[];
+}
+
+export interface ParkedCard {
+  id: string;
+  title: string;
+  reason: string;
+}
+
+export interface RecentActivityEntry {
+  ts: string;
+  action: string;
+  epic?: string;
+  agent: AgentId;
+  task_id: string;
+  task_title?: string;
+}
+
+export interface QuotaState {
+  autopilot_enabled: boolean;
+  blocked: boolean;
+  paused_by_gatekeeper: boolean;
+  since: string | null;
+  last_probe: string | null;
+  last_result: string | null;
+  transitions: number;
+}
+
+export interface AutopilotData {
+  quotaState: QuotaState;
+  epicPipeline: EpicPipelineEntry[];
+  parkedCards: ParkedCard[];
+  recentActivity: RecentActivityEntry[];
+}
+
+// ── Team Health Strip (Phase E9) ────────────────────────────────────────────
 export type HealthBucket = 'healthy' | 'stuck' | 'crash-loop' | 'iteration-exhausted' | 'silent-done';
 
 export interface HealthCounts {

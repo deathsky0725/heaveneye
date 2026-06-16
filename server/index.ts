@@ -38,6 +38,120 @@ app.get('/api/providers', (c) => c.json({ providers: state.getProviders() }));
 
 app.get('/api/usage/5h', (c) => c.json({ usage: state.getUsage5h() }));
 
+// ---- Quota aggregate API (Phase G1) ----
+// GET /api/quota — 5h cap % + weekly cap % + reset countdown + burn rate + per-agent tokens
+// Data sources: getUsage5h() (window) + getUsage7d() (weekly) + getProviders() + heaveneye_autopilot.json
+app.get('/api/quota', (c) => {
+  // --- 5h window ---
+  const usage5h = state.getUsage5h();
+  let totalTokens5h = 0;
+  let windowStartedAt: number | null = null;
+  let nextResetAt: number | null = null;
+
+  for (const u of usage5h) {
+    const sum = u.input + u.output + u.cacheRead + u.cacheCreate;
+    totalTokens5h += sum;
+    if (u.windowStartedAt != null) {
+      if (windowStartedAt === null || u.windowStartedAt < windowStartedAt) {
+        windowStartedAt = u.windowStartedAt;
+        nextResetAt = u.nextResetAt;
+      }
+    }
+  }
+
+  // MiniMax 5h hard cap (conservative — 500k tokens/h * 5h = 2.5M)
+  const CAP_5H = 2_500_000;
+  const cap5hPercent = Math.min((totalTokens5h / CAP_5H) * 100, 100);
+  const resetCountdownMs = nextResetAt ? Math.max(0, nextResetAt - Date.now()) : null;
+
+  // --- Burn rate: tokens/hr from 5h window ---
+  let burnRateTph = 0;
+  if (windowStartedAt !== null) {
+    const elapsedMs = Date.now() - windowStartedAt;
+    const elapsedHours = elapsedMs / (1000 * 60 * 60);
+    if (elapsedHours > 0) {
+      burnRateTph = totalTokens5h / elapsedHours;
+    }
+  }
+
+  // --- Weekly cap % ---
+  // Aggregate last-7-days tokens across all agents (all buckets summed)
+  let totalTokens7d = 0;
+  for (const id of AGENT_IDS) {
+    const buckets = state.getUsage7d(id);
+    for (const b of buckets) {
+      totalTokens7d += b.total;
+    }
+  }
+  // Weekly cap: 10M tokens/week (per MiniMax plan)
+  const CAP_WEEKLY = 10_000_000;
+  const capWeeklyPercent = Math.min((totalTokens7d / CAP_WEEKLY) * 100, 100);
+
+  // --- Per-agent token attribution ---
+  const agents = state.snapshot();
+  const providers = state.getProviders();
+  const agentAttribution: Array<{
+    agent: AgentId;
+    name: string;
+    provider: string;
+    tokensToday: number;
+    tokens5h: number;
+    costToday: number;
+  }> = [];
+
+  for (const id of AGENT_IDS) {
+    const snap = agents.find((a) => a.id === id);
+    if (!snap) continue;
+    const model = snap.currentModel ?? 'unknown';
+    const todayTokens = snap.tokensToday;
+    const tokensToday = todayTokens.input + todayTokens.output;
+
+    // 5h tokens for this agent
+    const agent5h = usage5h.find((u) => u.agent === id);
+    const tokens5h = agent5h
+      ? agent5h.input + agent5h.output + agent5h.cacheRead + agent5h.cacheCreate
+      : 0;
+
+    // cost today
+    const { computeCost } = require('./lib/costCalculator.js');
+    const costToday = computeCost(model, todayTokens);
+
+    // provider from getProviders
+    const prov = providers.find((p) => p.agents.includes(id));
+    const provider = prov?.provider ?? 'unknown';
+
+    agentAttribution.push({
+      agent: id,
+      name: snap.name,
+      provider,
+      tokensToday,
+      tokens5h,
+      costToday: Math.round(costToday * 10_000) / 10_000,
+    });
+  }
+
+  return c.json({
+    window5h: {
+      totalTokens: totalTokens5h,
+      capPercent: Math.round(cap5hPercent * 10) / 10,
+      resetCountdownMs,
+      resetCountdownSec: resetCountdownMs !== null ? Math.floor(resetCountdownMs / 1000) : null,
+      windowStartedAt,
+      nextResetAt,
+    },
+    weekly: {
+      totalTokens: totalTokens7d,
+      capPercent: Math.round(capWeeklyPercent * 10) / 10,
+      capTokens: CAP_WEEKLY,
+    },
+    burnRate: {
+      tokensPerHour: Math.round(burnRateTph),
+      tokensPerMinute: Math.round(burnRateTph / 60),
+    },
+    agents: agentAttribution,
+  });
+});
+
 app.get('/api/usage/24h', (c) => {
   const agent = c.req.query('agent');
   if (!agent || !AGENT_IDS.includes(agent as any)) {
@@ -232,7 +346,56 @@ app.post('/api/chat', async (c) => {
     .map((e) => `• [${e.ts}] ${e.agent}: ${e.kind} — ${e.task_title ?? e.task_id}`)
     .join('\n') || '(ไม่มีเหตุการณ์ล่าสุด)';
 
-  const systemPrompt = buildSystemPrompt(boardAgents, recentEvents);
+  // Build per-agent cost + history context (same logic as /api/cost)
+  const agentCostEntries: string[] = [];
+  const weeklyBurnRanking: { id: AgentId; name: string; cost7d: number }[] = [];
+  for (const id of AGENT_IDS) {
+    const snap = agents.find((a) => a.id === id);
+    if (!snap) continue;
+    const model = snap.currentModel ?? 'unknown';
+    const todayTokens = snap.tokensToday;
+    const buckets7d = state.getUsage7d(id);
+    let input7d = 0, output7d = 0, cacheRead7d = 0;
+    for (const b of buckets7d) {
+      input7d += b.input;
+      output7d += b.output;
+      cacheRead7d += b.cacheRead;
+    }
+    const costTodayAgent = computeCost(model, todayTokens);
+    const cost7dAgent = computeCost(model, { input: input7d, output: output7d, cacheRead: cacheRead7d, cacheCreate: 0 });
+    const totalTokensToday = todayTokens.input + todayTokens.output;
+    agentCostEntries.push(
+      `• ${snap.name}: วันนี้ใช้ ${totalTokensToday.toLocaleString()} tokens (in: ${todayTokens.input.toLocaleString()}, out: ${todayTokens.output.toLocaleString()}) | ค่าใช้จ่ายวันนี้ $${costTodayAgent.toFixed(4)} | 7 วัน $${cost7dAgent.toFixed(4)} | model: ${model}`
+    );
+    weeklyBurnRanking.push({ id, name: snap.name, cost7d: cost7dAgent });
+  }
+  const agentCostContext = agentCostEntries.join('\n') || '(ไม่มีข้อมูลค่าใช้จ่าย)';
+
+  // Build weekly burn ranking (highest spender first)
+  const burnRank = [...weeklyBurnRanking]
+    .sort((a, b) => b.cost7d - a.cost7d)
+    .map((e, i) => `${i + 1}. ${e.name}: $${e.cost7d.toFixed(4)}`)
+    .join('\n');
+
+  // Build per-agent recent session history
+  const agentHistoryEntries: string[] = [];
+  for (const id of AGENT_IDS) {
+    const snap = agents.find((a) => a.id === id);
+    if (!snap) continue;
+    const sessions = state.getAgentSessions(id, 3);
+    if (sessions.length === 0) continue;
+    const lines = sessions.map((s) => {
+      const dur = s.durationMs > 0 ? `${Math.round(s.durationMs / 60000)} นาที` : 'active';
+      const tokens = s.totalTokens > 0 ? `, ${s.totalTokens.toLocaleString()} tokens` : '';
+      const task = s.taskTitle ? ` [${s.taskTitle}]` : '';
+      const ended = s.status === 'ended' ? ' (จบ)' : ' (กำลังทำ)';
+      return `  - ${s.status === 'active' ? '🟢' : '⚪'} ${dur}${ended}${tokens}${task}`;
+    }).join('\n');
+    agentHistoryEntries.push(`• ${snap.name}:\n${lines}`);
+  }
+  const agentHistoryContext = agentHistoryEntries.join('\n') || '(ไม่มีข้อมูลประวัติ)';
+
+  const systemPrompt = buildSystemPrompt(boardAgents, recentEvents, agentCostContext, burnRank, agentHistoryContext);
 
   // Build messages: system + history + new user message
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
@@ -266,6 +429,107 @@ app.post('/api/chat', async (c) => {
   } catch (err) {
     console.error('[/api/chat] LLM error:', err);
     return c.json({ error: 'LLM call failed', detail: String(err) }, 500);
+  }
+});
+
+// ---- MissionControl aggregate API (Phase I1) ----
+// GET /api/autopilot — aggregates quotaState + epicPipeline + parkedCards + recentActivity
+app.get('/api/autopilot', async (c) => {
+  try {
+    const { readFile } = await import('node:fs/promises');
+    const { existsSync } = await import('node:fs');
+
+    // 1. quotaState — from heaveneye_autopilot.json
+    let quotaState: Record<string, unknown> = {};
+    const autopilotPath = join(HOME, '.hermes', 'state', 'heaveneye_autopilot.json');
+    if (existsSync(autopilotPath)) {
+      try {
+        quotaState = JSON.parse(await readFile(autopilotPath, 'utf8'));
+      } catch {
+        // use empty on parse error
+      }
+    }
+
+    // 2. epicPipeline — from anmaioyi inbox + outbox JSONL
+    const inboxPath = join(HOME, 'Agentic-OS', 'Context', 'anmaioyi-inbox.jsonl');
+    const outboxPath = join(HOME, 'Agentic-OS', 'Context', 'anmaioyi-outbox.jsonl');
+    const epicMap: Record<string, { id: string; project: string; stage: string; cards: { id: string; title: string }[] }> = {};
+
+    for (const path of [inboxPath, outboxPath]) {
+      if (existsSync(path)) {
+        try {
+          const content = await readFile(path, 'utf8');
+          const lines = content.split('\n').filter((l) => l.trim());
+          for (const line of lines) {
+            try {
+              const entry = JSON.parse(line);
+              if (entry.kind === 'epic' || entry.kind === 'epic_ack') {
+                const epicId = entry.project ?? entry.epic ?? 'unknown';
+                if (!epicMap[epicId]) {
+                  epicMap[epicId] = { id: epicId, project: epicId, stage: 'intake', cards: [] };
+                }
+                if (entry.kind === 'epic_ack') {
+                  // Advance stage: intake → card_plan → ack → cards → done
+                  const stageOrder = ['intake', 'card_plan', 'ack', 'cards', 'done'];
+                  const currentIdx = stageOrder.indexOf(epicMap[epicId].stage);
+                  if (currentIdx < stageOrder.length - 1) {
+                    epicMap[epicId].stage = stageOrder[currentIdx + 1]!;
+                  }
+                }
+                if (entry.phase) epicMap[epicId].stage = entry.phase;
+                if (entry.topic) {
+                  epicMap[epicId].cards.push({ id: epicId, title: entry.topic });
+                }
+              }
+            } catch {
+              // skip malformed lines
+            }
+          }
+        } catch {
+          // skip unreadable files
+        }
+      }
+    }
+    const epicPipeline = Object.values(epicMap);
+
+    // 3. parkedCards — scan kanban boards for blocked tasks with [PARKED] comment
+    const parkedCards: { id: string; title: string; reason: string }[] = [];
+    const boardsRoot = join(HOME, '.hermes', 'kanban', 'boards');
+    if (existsSync(boardsRoot)) {
+      const { readdirSync } = require('node:fs');
+      for (const entry of readdirSync(boardsRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith('_')) continue;
+        const dbPath = join(boardsRoot, entry.name, 'kanban.db');
+        if (!existsSync(dbPath)) continue;
+        try {
+          const db = new (require('bun:sqlite').Database)(dbPath, { readonly: true });
+          const parked = db.query(`
+            SELECT t.id, t.title, c.body as reason
+            FROM tasks t
+            JOIN task_comments c ON c.task_id = t.id
+            WHERE t.status = 'blocked'
+              AND c.body LIKE '%[PARKED]%'
+            GROUP BY t.id
+          `).all() as { id: string; title: string; reason: string }[];
+          db.close();
+          for (const row of parked) {
+            // Extract [PARKED] reason text
+            const match = row.reason.match(/\[PARKED\]\s*(.*)/);
+            parkedCards.push({ id: row.id, title: row.title, reason: match?.[1] ?? '' });
+          }
+        } catch {
+          // ignore individual board errors
+        }
+      }
+    }
+
+    // 4. recentActivity — last 20 kanban events from state engine
+    const recentActivity = state.getKanbanEvents(20);
+
+    return c.json({ quotaState, epicPipeline, parkedCards, recentActivity });
+  } catch (err) {
+    console.error('[/api/autopilot]', err);
+    return c.json({ error: String(err) }, 500);
   }
 });
 
