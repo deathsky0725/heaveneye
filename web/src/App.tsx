@@ -1,11 +1,10 @@
 import { useEffect, lazy, Suspense, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { connectStream, startUsage5hPolling, fetchInitialInbox, fetchInitialEvents, fetchInitialHealth, useStore } from './store';
+import { connectStream, startUsage5hPolling, fetchInitialEvents, fetchInitialHealth, useStore } from './store';
 import { ChatPanel } from './components/ChatPanel';
 import { useThemeStore, applyTheme } from './store/themeStore';
 import { OfficeMap } from './components/OfficeMap';
 import { UsagePanel } from './components/UsagePanel';
-import { InboxPanel } from './components/InboxPanel';
 import { TaskFeedSidebar } from './components/TaskFeedSidebar';
 import { SystemHealth } from './components/SystemHealth';
 import { CrossBoardDashboard } from './components/CrossBoardDashboard';
@@ -43,7 +42,6 @@ export default function App() {
   useEffect(() => {
     connectStream();
     startUsage5hPolling();
-    fetchInitialInbox();
     fetchInitialEvents();
     fetchInitialHealth();
   }, []);
@@ -199,7 +197,6 @@ export default function App() {
       )}
 
       {/* Persistent overlays */}
-      <InboxPanel />
       <TaskFeedSidebar />
       <ToastContainer />
       <CommandPalette />

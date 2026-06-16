@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { VoiceSTT } from './VoiceSTT';
+import { useTTS, speakThai } from '../lib/tts';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -98,6 +99,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         isEpicDraft: data.isTeamCommand,
       };
       setMessages((prev) => [...prev, assistantMsg]);
+      // J4: read จื่อเย่'s reply aloud if TTS toggle is ON
+      if (useTTS.getState().enabled) speakThai(data.reply);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send');
       // Remove the optimistically-added user message on error
