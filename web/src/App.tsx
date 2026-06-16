@@ -53,9 +53,9 @@ export default function App() {
     applyTheme(currentTheme);
   }, [currentTheme]);
 
-  // Crash notification polling (Phase D.2) — poll every 2s while mounted
+  // Crash notification polling (Phase D.2) — poll every 15s while mounted
   useEffect(() => {
-    const POLL_MS = 2_000;
+    const POLL_MS = 15_000;
     let stopped = false;
 
     const poll = async () => {

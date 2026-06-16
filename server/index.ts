@@ -759,10 +759,11 @@ app.post('/api/command', async (c) => {
     return c.json({ error: 'text is required and must be a string' }, 400);
   }
   const INBOX = join(HOME, 'Agentic-OS/Context/anmaioyi-inbox.jsonl');
-  const line = JSON.stringify({ kind: 'epic', from: 'bridge', text }) + '\n';
+  const epic_id = `BRIDGE-CMD-${Date.now()}`;
+  const line = JSON.stringify({ kind: 'epic', epic_id, from: 'bridge', project: 'heaveneye', phase: 'BRIDGE-CMD', spec: text }) + '\n';
   const { appendFile } = await import('node:fs/promises');
   await appendFile(INBOX, line, 'utf8');
-  return c.json({ ok: true, epic_id: 'draft' });
+  return c.json({ ok: true, epic_id });
 });
 
 // POST /api/crash-notification/test — send a test notification (does not require a real dead event)

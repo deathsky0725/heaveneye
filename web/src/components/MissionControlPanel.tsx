@@ -45,22 +45,18 @@ function QuotaWidget({ qs }: { qs: AutopilotData['quotaState'] }) {
     : '⚪ ปิด';
 
   return (
-    <div className="flex flex-wrap items-center gap-3 text-xs">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs min-w-0">
       <span className="font-medium text-slate-200">{status}</span>
       {qs.since && (
-        <span className="text-slate-500">
-          since {formatTs(qs.since)}
-        </span>
+        <span className="text-slate-500">since {formatTs(qs.since)}</span>
       )}
       {qs.last_result && (
-        <span className="text-slate-500">
+        <span className="text-slate-500 truncate max-w-32" title={qs.last_result}>
           probe: {qs.last_result}
         </span>
       )}
       {qs.transitions > 0 && (
-        <span className="text-slate-600">
-          {qs.transitions} transitions
-        </span>
+        <span className="text-slate-600">{qs.transitions} transitions</span>
       )}
     </div>
   );
@@ -167,7 +163,7 @@ function Section({ title, emoji, children, defaultOpen = true }: SectionProps) {
       >
         <span className="text-sm">{emoji}</span>
         <span className="text-xs font-semibold text-slate-200 uppercase tracking-wide">{title}</span>
-        <span className={`ml-auto text-slate-500 text-xs transition-transform ${open ? 'rotate-90' : ''}`}>
+        <span className={`ml-auto shrink-0 text-slate-500 text-xs transition-transform ${open ? 'rotate-90' : ''}`}>
           ›
         </span>
       </button>
@@ -222,10 +218,10 @@ export function MissionControlPanel() {
     <div className="px-6 pb-4">
       <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-700/50">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-700/50">
           <span className="text-sm">🎛️</span>
           <span className="text-xs font-semibold text-slate-200 uppercase tracking-wide">MissionControl</span>
-          <div className="ml-auto">
+          <div className="ml-auto min-w-0">
             <QuotaWidget qs={data.quotaState} />
           </div>
         </div>
