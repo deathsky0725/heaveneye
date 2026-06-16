@@ -514,7 +514,7 @@ export function OfficeMap() {
   }
 
   return (
-    <div className="relative w-full h-[450px] bg-slate-950/70 border border-white/10 rounded-3xl overflow-hidden office-isofloor p-6 shadow-2xl">
+    <div className="relative w-full sm:h-[450px] h-[calc(100vh-18rem)] min-h-[280px] max-h-[600px] bg-slate-950/70 border border-white/10 rounded-3xl overflow-hidden office-isofloor p-4 sm:p-6 shadow-2xl">
       {/* Connection lines — org hierarchy, drawn behind desks/avatars */}
       <svg
         className="absolute inset-0 w-full h-full pointer-events-none"

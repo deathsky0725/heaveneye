@@ -72,19 +72,19 @@ export function ProviderPanel() {
           {data.providers.map((entry) => {
             const colorClass = PROVIDER_COLOR[entry.provider] ?? PROVIDER_COLOR.unknown;
             return (
-              <div key={entry.provider} className="flex items-center gap-3 flex-wrap">
-                {/* Provider name */}
-                <span className="text-sm font-medium text-slate-200 w-24 shrink-0">
-                  {providerLabel(entry.provider)}
-                </span>
+              <div key={entry.provider} className="flex flex-wrap items-start gap-2">
+                {/* Provider name + token total — label-wrap so long names don't force chip overflow */}
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <span className="text-sm font-medium text-slate-200 shrink-0">
+                    {providerLabel(entry.provider)}
+                  </span>
+                  <span className="text-xs text-slate-400 tabular-nums">
+                    {formatTokens(entry.tokensTodayTotal)} tokens วันนี้
+                  </span>
+                </div>
 
-                {/* Token total */}
-                <span className="text-xs text-slate-400 tabular-nums">
-                  {formatTokens(entry.tokensTodayTotal)} tokens วันนี้
-                </span>
-
-                {/* Agent chips */}
-                <div className="flex items-center gap-1.5 flex-wrap ml-auto">
+                {/* Agent chips — self-wrapping flex row, no ml-auto to avoid horizontal overflow */}
+                <div className="flex flex-wrap gap-1.5">
                   {entry.agents.map((agentId) => (
                     <span
                       key={agentId}
