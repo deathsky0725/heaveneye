@@ -19,6 +19,7 @@ import { startCrashDetector, getCrashNotificationConfig, setNotificationEnabled 
 import { gatewayStart, gatewayStop } from './lib/gatewayControl.js';
 import { getAgentHealthScore } from './lib/agentHealth.ts';
 import { readAlertConfig, writeAlertConfig, type AlertConfig } from './lib/alertConfig.ts';
+import { scanAlerts } from './lib/alerts.ts';
 import { computeCost, priceForModel } from './lib/costCalculator.js';
 import { chatCompletion, buildSystemPrompt, hasTeamCommandIntent, buildEpicDraft } from './lib/llm.ts';
 import exportApp from './routes/export.ts';
@@ -786,6 +787,12 @@ app.get('/api/crash-notification/check', (c) => {
 app.get('/api/config/alerts', (c) => {
   const config = readAlertConfig();
   return c.json(config);
+});
+
+// GET /api/alerts — L1 proactive alert scan (4 event types + dedup + throttle)
+app.get('/api/alerts', (c) => {
+  const pendingAlerts = scanAlerts();
+  return c.json({ pendingAlerts });
 });
 
 app.post('/api/config/alerts', async (c) => {
