@@ -169,8 +169,8 @@ export function CostPanel() {
     ? data.daily[data.daily.length - 2]
     : null;
 
-  const weeklyTotal = data?.weekly?.reduce((s, w) => s + w.total_cost, 0) ?? 0;
-  const monthlyTotal = data?.monthly?.reduce((s, m) => s + m.total_cost, 0) ?? 0;
+  const weeklyTotal = data?.weekly?.reduce((s, w) => s + w.cost, 0) ?? 0;
+  const monthlyTotal = data?.monthly?.reduce((s, m) => s + m.cost, 0) ?? 0;
 
   // Per-provider: max for bar scaling
   const providerEntries = data?.per_provider

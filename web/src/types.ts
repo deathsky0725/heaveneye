@@ -191,18 +191,20 @@ export interface CostDailyEntry {
 
 export interface CostWeeklyEntry {
   week: string;
-  total_cost: number;
-  total_tokens: number;
-  per_agent: Record<string, number>;
-  per_provider: Record<string, number>;
+  cost: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  agentCount: number;
 }
 
 export interface CostMonthlyEntry {
   month: string;
-  total_cost: number;
-  total_tokens: number;
-  per_agent: Record<string, number>;
-  per_provider: Record<string, number>;
+  cost: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  agentCount: number;
 }
 
 export interface CostBreakdownResponse {
