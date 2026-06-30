@@ -180,6 +180,39 @@ export interface CostApiResponse {
   aggregate: CostAggregate;
 }
 
+// GET /api/cost/breakdown?range=7d|30d|90d|all (M2-2)
+export interface CostDailyEntry {
+  date: string;
+  total_cost: number;
+  total_tokens: number;
+  per_agent: Record<string, number>;
+  per_provider: Record<string, number>;
+}
+
+export interface CostWeeklyEntry {
+  week: string;
+  total_cost: number;
+  total_tokens: number;
+  per_agent: Record<string, number>;
+  per_provider: Record<string, number>;
+}
+
+export interface CostMonthlyEntry {
+  month: string;
+  total_cost: number;
+  total_tokens: number;
+  per_agent: Record<string, number>;
+  per_provider: Record<string, number>;
+}
+
+export interface CostBreakdownResponse {
+  daily: CostDailyEntry[];
+  weekly: CostWeeklyEntry[];
+  monthly: CostMonthlyEntry[];
+  per_provider: Record<string, number>;
+  per_agent: Record<string, number>;
+}
+
 // ── Crash Notifications (Phase D.2) ────────────────────────────────────────
 
 export interface CrashNotificationEntry {

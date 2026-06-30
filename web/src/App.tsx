@@ -26,6 +26,7 @@ import type { AgentId, AgentSnapshot, CrashNotificationEntry, TauriAlertEntry } 
 const LazyDetailPanel = lazy(() => import('./components/DetailPanel').then((m) => ({ default: m.DetailPanel })));
 const LazyQuotaPanel = lazy(() => import('./components/QuotaPanel').then((m) => ({ default: m.QuotaPanel })));
 const LazyMissionControlPanel = lazy(() => import('./components/MissionControlPanel').then((m) => ({ default: m.MissionControlPanel })));
+const LazyCostPanel = lazy(() => import('./components/CostPanel').then((m) => ({ default: m.CostPanel })));
 
 export default function App() {
   const agents = useStore((s) => s.agents);
@@ -210,6 +211,13 @@ export default function App() {
         {/* Provider rollup */}
         <div className="px-6 mb-4">
           <ProviderPanel />
+        </div>
+
+        {/* Cost panel — daily / weekly / monthly breakdown (M2-3) */}
+        <div className="px-6 mb-4">
+          <Suspense fallback={null}>
+            <LazyCostPanel />
+          </Suspense>
         </div>
 
         {/* Virtual Office Map */}

@@ -7,6 +7,7 @@ import { PORT, AGENT_IDS, AGENTS, type AgentId, HOME, INBOX_PATH } from './confi
 import { state } from './state/engine.ts';
 import { relayStore } from './state/relayStore.ts';
 import type { ServerEvent, AgentStatus } from './state/types.ts';
+import { modelToProvider } from './state/types.ts';
 import { startHermesWatcher } from './watchers/hermes.ts';
 import { startHermesEventWatcher } from './watchers/hermes-events.ts';
 import { startClaudeWatcher } from './watchers/claude.ts';
@@ -23,6 +24,13 @@ import { readRemoteAlertSettings, writeRemoteAlertSettings, type RemoteAlertConf
 import { scanAlerts, popTauriAlertEntries, type TauriAlertEntry } from './lib/alerts.ts';
 import { computeCost, priceForModel } from './lib/costCalculator.js';
 import { chatCompletion, buildSystemPrompt, hasTeamCommandIntent, buildEpicDraft } from './lib/llm.ts';
+import {
+  aggregateCostByProvider,
+  aggregateCostByAgent,
+  aggregateCostWeekly,
+  aggregateCostMonthly,
+  type CostRange,
+} from './lib/costAggregation.ts';
 import exportApp from './routes/export.ts';
 
 const app = new Hono();
@@ -305,6 +313,129 @@ app.get('/api/cost', (c) => {
       costWeek,
       trend7d,
     },
+  });
+});
+
+// ---- Cost breakdown API (M2-2) ----
+// GET /api/cost/breakdown?range=7d|30d|90d|all
+// Reuses M2-1 pure aggregators: aggregateCostByProvider, aggregateCostByAgent,
+// aggregateCostWeekly, aggregateCostMonthly
+app.get('/api/cost/breakdown', (c) => {
+  const range = (c.req.query('range') ?? '7d') as string;
+  const now = Date.now();
+  const dayMs = 86_400_000;
+
+  let startMs: number;
+  if (range === '7d') {
+    startMs = now - 7 * dayMs;
+  } else if (range === '30d') {
+    startMs = now - 30 * dayMs;
+  } else if (range === '90d') {
+    startMs = now - 90 * dayMs;
+  } else {
+    // 'all' — use earliest data we have (7d is minimum bucket)
+    startMs = now - 7 * dayMs;
+  }
+
+  const costRange: CostRange = { start: new Date(startMs), end: new Date(now) };
+
+  // Build per-agent daily buckets over the range for per_agent + daily breakdown
+  const dailyMap = new Map<string, {
+    date: string;
+    totalCost: number;
+    totalTokens: number;
+    input: number;
+    output: number;
+    cacheRead: number;
+    perAgent: Record<string, number>;
+    perProvider: Record<string, number>;
+  }>();
+
+  for (const id of AGENT_IDS) {
+    const snap = state.snapshot().find((a) => a.id === id);
+    if (!snap) continue;
+    const model = snap.currentModel ?? 'unknown';
+    const provider = modelToProvider(model);
+
+    const buckets = state.getUsage7d(id).filter((b) => {
+      const d = new Date(b.day);
+      return d >= costRange.start && d <= costRange.end;
+    });
+
+    for (const b of buckets) {
+      const dayCost = (
+        (b.input * priceForModel(model).input) +
+        (b.output * priceForModel(model).output) +
+        (b.cacheRead * priceForModel(model).input * 0.1)
+      ) / 1_000_000;
+
+      if (!dailyMap.has(b.day)) {
+        dailyMap.set(b.day, {
+          date: b.day,
+          totalCost: 0,
+          totalTokens: 0,
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          perAgent: {},
+          perProvider: {},
+        });
+      }
+      const entry = dailyMap.get(b.day)!;
+      entry.totalCost += dayCost;
+      entry.totalTokens += b.total;
+      entry.input += b.input;
+      entry.output += b.output;
+      entry.cacheRead += b.cacheRead;
+      entry.perAgent[id] = (entry.perAgent[id] ?? 0) + dayCost;
+      entry.perProvider[provider] = (entry.perProvider[provider] ?? 0) + dayCost;
+    }
+  }
+
+  const daily = Array.from(dailyMap.values())
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((d) => ({
+      date: d.date,
+      total_cost: Math.round(d.totalCost * 1_000_000) / 1_000_000,
+      total_tokens: d.totalTokens,
+      per_agent: d.perAgent,
+      per_provider: d.perProvider,
+    }));
+
+  // weekly: reuse M2-1 aggregator (uses 'MiniMax-M2.7' representative model per mixing-providers limitation)
+  const weeklyRaw = aggregateCostWeekly(costRange, (id) => state.getUsage7d(id), () =>
+    state.snapshot().map((a) => ({ id: a.id, currentModel: a.currentModel }))
+  );
+
+  // monthly: reuse M2-1 aggregator
+  const monthlyRaw = aggregateCostMonthly(costRange, (id) => state.getUsage7d(id), () =>
+    state.snapshot().map((a) => ({ id: a.id, currentModel: a.currentModel }))
+  );
+
+  // per_provider: reuse M2-1 aggregator → {openrouter: N, minimax: N, ...}
+  const perProviderRaw = aggregateCostByProvider(costRange, (id) => state.getUsage7d(id), () =>
+    state.snapshot().map((a) => ({ id: a.id, currentModel: a.currentModel }))
+  );
+  const per_provider: Record<string, number> = {};
+  for (const p of perProviderRaw) {
+    per_provider[p.provider] = Math.round(p.cost * 1_000_000) / 1_000_000;
+  }
+
+  // per_agent: reuse M2-1 aggregator → {shihao: N, yefan: N, ...}
+  const perAgentRaw = aggregateCostByAgent(costRange, (id) => state.getUsage7d(id), () =>
+    state.snapshot().map((a) => ({ id: a.id, currentModel: a.currentModel, name: a.name }))
+  );
+  const per_agent: Record<string, number> = {};
+  for (const a of perAgentRaw) {
+    per_agent[a.agent] = Math.round(a.cost * 1_000_000) / 1_000_000;
+  }
+
+  return c.json({
+    daily,
+    weekly: weeklyRaw,
+    monthly: monthlyRaw,
+    per_provider,
+    per_agent,
   });
 });
 
